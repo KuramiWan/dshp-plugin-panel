@@ -65,7 +65,7 @@ async function handlerList(ctx: Context, store: SessionSkillStore, invocation: C
   return { kind: 'success', text: '📋 当前会话已引入技能（' + names.length + ' 个）：\n' + lines.join('\n') }
 }
 
-/** /skill-introduce <name> —— 从池引入到当前会话（会话结束自动消失；同名影子覆盖本会话）。 */
+/** /skill-introduce <name> —— 从池引入到当前会话（引入即持久化到 ~/.dsh/skills，重启后仍可用；同名影子覆盖本会话）。 */
 async function handlerIntroduce(
   ctx: Context,
   poolRoot: string,
@@ -78,18 +78,19 @@ async function handlerIntroduce(
   const result = await introduceSkill(ctx, poolRoot, store, agent, name)
   if (!result.ok) return { kind: 'error', text: '❌ ' + result.reason }
   if (result.alreadyIntroduced) return { kind: 'success', text: '✅ "' + result.name + '" 已在本会话引入（幂等，无需重复）' }
+  const persist = result.persisted ? '（已持久化到 ~/.dsh/skills，重启后仍可用）' : ''
   const shadow = result.shadowed ? '（影子覆盖：本会话使用引入版，其余会话不受影响）' : ''
-  return { kind: 'success', text: '✅ 已引入 "' + result.name + '"（' + result.origin + '）到当前会话' + shadow }
+  return { kind: 'success', text: '✅ 已引入 "' + result.name + '"（' + result.origin + '）到当前会话' + persist + shadow }
 }
 
-/** /skill-remove <name> —— 从当前会话移除（幂等，未引入时报错）。 */
+/** /skill-remove <name> —— 从当前会话移除（幂等，未引入时报错；~/.dsh/skills 常驻副本保留）。 */
 function handlerRemove(store: SessionSkillStore, invocation: CommandInvocation): CommandResult {
   const agent = invocation.agent
   const name = invocation.rawInput.trim()
   if (name.length === 0) return { kind: 'error', text: '❌ 用法错误：/skill-remove <技能名>' }
   const result = removeSkill(store, agent, name)
   if (!result.ok) return { kind: 'error', text: '❌ ' + result.reason }
-  return { kind: 'success', text: '🗑 已移除 "' + result.name + '"（当前会话）' }
+  return { kind: 'success', text: '🗑 已从当前会话移除 "' + result.name + '"（~/.dsh/skills 常驻副本保留）' }
 }
 
 /** 注册五个 /skill-* 斜杠命令（全局，经 ctx.commands 供所有会话的 `/` 菜单发现）。 */
@@ -116,13 +117,13 @@ export function applySessionSkillCommands(ctx: Context, config: SessionSkillComm
   }))
   ctx.effect(() => ctx.commands.register({
     name: 'skill-introduce',
-    description: 'introduce a pool skill into this session (vanishes when the session ends)',
+    description: 'introduce a pool skill into this session (persists to ~/.dsh/skills, survives restarts)',
     input: { hint: '<name>' },
     handler: invocation => handlerIntroduce(ctx, poolRoot, store, invocation),
   }))
   ctx.effect(() => ctx.commands.register({
     name: 'skill-remove',
-    description: 'remove a skill introduced into this session',
+    description: 'remove a skill introduced into this session (persisted copy in ~/.dsh/skills stays)',
     input: { hint: '<name>' },
     handler: invocation => handlerRemove(store, invocation),
   }))

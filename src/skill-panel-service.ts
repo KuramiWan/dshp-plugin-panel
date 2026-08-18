@@ -227,7 +227,7 @@ export class SkillPanelService {
     }
   }
 
-  /** 从池引入到当前会话（幂等；同名影子覆盖仅本会话）。 */
+  /** 从池引入到当前会话（幂等；引入即持久化到 ~/.dsh/skills；同名影子覆盖仅本会话）。 */
   async introduce(request: SkillPanelIntroduceRequest): Promise<SkillPanelIntroduceResult> {
     const agent = this.agentOf(request.sessionId)
     const result = await introduceSkill(this.ctx, this.poolRoot, this.store, agent, request.name)
@@ -238,6 +238,7 @@ export class SkillPanelService {
       origin: result.origin,
       shadowed: result.shadowed,
       alreadyIntroduced: result.alreadyIntroduced,
+      persisted: result.persisted,
     }
   }
 

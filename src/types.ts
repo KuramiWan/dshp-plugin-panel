@@ -68,6 +68,8 @@ export type SkillPanelIntroduceResult =
     readonly origin: string
     readonly shadowed: boolean
     readonly alreadyIntroduced: boolean
+    /** 引入即持久化：是否已复制到 ~/.dsh/skills/<name>/（重启后仍可用）。 */
+    readonly persisted: boolean
   }
   | { readonly ok: false; readonly reason: string }
 

@@ -65,11 +65,12 @@ export function SkillPanelView(props: SkillPanelViewProps) {
     void client.introduce({ sessionId, name }).then((result) => {
       setBusy(false)
       if (result.ok) {
+        const persist = result.persisted ? t('notice.persisted') : ''
         setNotice({
           kind: 'ok',
           text: result.alreadyIntroduced
             ? t('notice.already')
-            : t('notice.introduced') + (result.shadowed ? t('notice.shadow') : ''),
+            : t('notice.introduced') + persist + (result.shadowed ? t('notice.shadow') : ''),
         })
       } else {
         setNotice({ kind: 'error', text: `${t('notice.failed')}: ${result.reason}` })

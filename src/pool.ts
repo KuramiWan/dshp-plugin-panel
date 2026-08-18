@@ -73,6 +73,17 @@ export function resolvePoolRoot(poolRoot: string | undefined, env: EnvLike = pro
   return poolRoot ?? defaultPoolRoot(env)
 }
 
+/**
+ * user-dsh 技能根（默认 ~/.dsh/skills）：skill-filesystem 启动时扫描的持久层。
+ * 引入即持久化：introduce 把技能目录复制到这里，宿主重启后仍可用。
+ * 解析优先级与 defaultPoolRoot 一致（$DSH_HOME > ~/.dsh），再拼 skills 子目录。
+ */
+export function defaultUserSkillsRoot(env: EnvLike = process.env): string {
+  const fromEnv = env.DSH_HOME?.trim()
+  const home = fromEnv || join(homedir(), '.dsh')
+  return join(home, 'skills')
+}
+
 export function isValidSkillName(name: string): boolean {
   return NAME_PATTERN.test(name)
 }

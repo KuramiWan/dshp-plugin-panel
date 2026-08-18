@@ -124,7 +124,7 @@ export function applySessionSkillTools(ctx: Context, config: SessionSkillConfig)
 
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'session_skill_introduce',
-    description: 'Introduce a skill from the pool into THIS session: it appears in this session skill catalog and can be loaded with the skill tool. Other sessions are unaffected; it disappears when the session ends. If the name already exists globally or in a preset, this session uses the introduced version (shadow override).',
+    description: 'Introduce a skill from the pool into THIS session: it appears in this session skill catalog and can be loaded with the skill tool. Introducing also PERSISTS the skill to ~/.dsh/skills/<name> so it survives host restarts (available to all sessions afterwards). If the name already exists globally or in a preset, this session uses the introduced version (shadow override).',
     parameters: {
       name: { type: 'string', required: true, description: 'Skill name from session_skill_browse.' },
     },
@@ -138,13 +138,15 @@ export function applySessionSkillTools(ctx: Context, config: SessionSkillConfig)
           origin: { type: 'string', required: true },
           shadowed: { type: 'boolean' },
           alreadyIntroduced: { type: 'boolean' },
+          persisted: { type: 'boolean', required: true },
         },
       },
       render: (_args, value) => {
-        const v = value as { introduced: boolean; name: string; origin: string; shadowed?: boolean; alreadyIntroduced?: boolean }
+        const v = value as { introduced: boolean; name: string; origin: string; shadowed?: boolean; alreadyIntroduced?: boolean; persisted?: boolean }
         if (v.alreadyIntroduced) return [{ type: 'text', text: 'skill "' + v.name + '" is already introduced in this session' }]
+        const persist = v.persisted === true ? ' and persisted to ~/.dsh/skills (survives host restarts)' : ' (persistence skipped)'
         const shadow = v.shadowed ? ' (shadows a same-name skill from another layer for this session only)' : ''
-        return [{ type: 'text', text: 'introduced "' + v.name + '" (' + v.origin + ') into this session' + shadow }]
+        return [{ type: 'text', text: 'introduced "' + v.name + '" (' + v.origin + ') into this session' + persist + shadow }]
       },
     },
     execute: async (args, exec) => {
@@ -157,13 +159,14 @@ export function applySessionSkillTools(ctx: Context, config: SessionSkillConfig)
         origin: result.origin,
         ...(result.shadowed ? { shadowed: true } : {}),
         ...(result.alreadyIntroduced ? { alreadyIntroduced: true } : {}),
+        persisted: result.persisted,
       }
     },
   })))
 
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'session_skill_remove',
-    description: 'Remove a skill introduced into THIS session by session_skill_introduce: its catalog entry disappears on the next step. The pool file is untouched; other sessions are unaffected.',
+    description: 'Remove a skill introduced into THIS session by session_skill_introduce: its catalog entry disappears on the next step. The pool file is untouched; other sessions are unaffected. A persisted copy in ~/.dsh/skills (if any) stays — remove only unloads this session.',
     parameters: {
       name: { type: 'string', required: true, description: 'Skill name from session_skill_list.' },
     },

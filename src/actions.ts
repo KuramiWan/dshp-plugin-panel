@@ -2,10 +2,21 @@
  * DSHP skill 三入口（模型工具 / 斜杠命令 / 面板 Remote）共享的核心动作（ADR-0007「三面同源」）。
  * 把 browse / introduce / remove 的业务逻辑收敛到一处，避免 skills/commands/service 各自手写漂移。
  * 各表面（tools.ts / commands.ts / skill-panel-service.ts）只负责把统一结果格式化为自身形状。
+ * 引入即持久化：introduce 除注册进会话运行时，还会把技能目录复制到 user-dsh 层
+ * （~/.dsh/skills/<name>/，skill-filesystem 启动时自动扫描），宿主重启后依然可用。
  */
+import { cpSync, existsSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { findPoolEntry, isValidSkillName, listPoolEntries, listUnsubscribedCatalogEntries, readSkillContent } from './pool.ts'
+import {
+  defaultUserSkillsRoot,
+  findPoolEntry,
+  isValidSkillName,
+  listPoolEntries,
+  listUnsubscribedCatalogEntries,
+  readSkillContent,
+} from './pool.ts'
 import type { SessionSkillStore } from './handles.ts'
 
 /** 池浏览条目（含面板前置置灰原因；命令/工具取用其子集）。 */
@@ -22,9 +33,17 @@ export interface PoolBrowseEntry {
 
 /**
  * 统一结果：成功 / 幂等已引入 / 失败。各表面据此渲染自身的成功与报错形状。
+ * persisted：引入即持久化 —— 是否已把技能复制到 user-dsh 层（~/.dsh/skills/<name>/）。
  */
 export type IntroduceResult =
-  | { readonly ok: true; readonly name: string; readonly origin: 'local' | 'ecosystem'; readonly shadowed: boolean; readonly alreadyIntroduced: boolean }
+  | {
+    readonly ok: true
+    readonly name: string
+    readonly origin: 'local' | 'ecosystem'
+    readonly shadowed: boolean
+    readonly alreadyIntroduced: boolean
+    readonly persisted: boolean
+  }
   | { readonly ok: false; readonly reason: string }
 
 export type RemoveResult =
@@ -68,14 +87,16 @@ export function filterBrowse(
 
 /**
  * 从池引入 skill 到当前会话（幂等；同名影子覆盖仅本会话）。
- * 统一校验序列：名称 → 幂等 → 存在 → 订阅 → 信任 → 可读 → 注册。
+ * 引入即持久化：除注册进会话运行时，还会把技能目录复制到 user-dsh 层
+ * （~/.dsh/skills/<name>/，skill-filesystem 启动时自动扫描），宿主重启后依然可用。
+ * 统一校验序列：名称 → 幂等 → 存在 → 订阅 → 信任 → 可读 → 持久化 → 注册。
  */
 export async function introduceSkill(
   ctx: Context, poolRoot: string, store: SessionSkillStore, agent: Agent, name: string,
 ): Promise<IntroduceResult> {
   if (!isValidSkillName(name)) return { ok: false, reason: `非法技能名 "${name}"` }
   if (store.disposer(agent, name) !== undefined) {
-    return { ok: true, name, origin: 'local', shadowed: false, alreadyIntroduced: true }
+    return { ok: true, name, origin: 'local', shadowed: false, alreadyIntroduced: true, persisted: existsSync(join(defaultUserSkillsRoot(), name)) }
   }
   const entry = findPoolEntry(poolRoot, name)
   if (entry === undefined) return { ok: false, reason: `池中未找到 "${name}"` }
@@ -85,6 +106,20 @@ export async function introduceSkill(
   }
   const def = readSkillContent(entry)
   if (def === undefined) return { ok: false, reason: `"${name}" 在池中不可读` }
+
+  // 引入即持久化：复制到 user-dsh 层。目标已存在（用户自有或上次引入）则保留现盘内容，
+  // 不覆盖用户可能的本地编辑；持久化失败视为整次引入失败，避免"看似成功实则未持久化"。
+  const userRoot = defaultUserSkillsRoot()
+  const target = join(userRoot, name)
+  if (!existsSync(target)) {
+    try {
+      mkdirSync(userRoot, { recursive: true })
+      cpSync(entry.directory, target, { recursive: true })
+    } catch (error) {
+      return { ok: false, reason: `持久化到 ${target} 失败：${error instanceof Error ? error.message : String(error)}` }
+    }
+  }
+
   const skills = agent.ctx.get('skills')
   if (skills === undefined) return { ok: false, reason: 'skills 服务不可用' }
   const view = await ctx.skills.list({ scope: agent })
@@ -96,10 +131,10 @@ export async function introduceSkill(
     invocation: { modelInvocable: def.modelInvocable, userInvocable: def.userInvocable },
     source: 'dshp-session-skill',
     content: def.content,
-    resourceBase: { kind: 'directory', path: def.directory },
+    resourceBase: { kind: 'directory', path: target },
   })
   store.track(agent, name, dispose)
-  return { ok: true, name, origin: entry.origin, shadowed, alreadyIntroduced: false }
+  return { ok: true, name, origin: entry.origin, shadowed, alreadyIntroduced: false, persisted: true }
 }
 
 /** 从当前会话移除（幂等；未引入时报错）。 */
