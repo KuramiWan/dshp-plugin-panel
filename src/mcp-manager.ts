@@ -99,6 +99,13 @@ export class SessionMcpManager {
   private readonly connections = new WeakMap<Agent, Map<string, Connection>>()
   /** 每个白名单名当前被多少 agent 连接（便于 removeTemplate 检查，WeakMap 不可枚举）。 */
   private readonly usedCount = new Map<string, number>()
+  /**
+   * 本管理器在会话里创建的派生 serverName（`dshp-<name>-<hash>`）。
+   * convention registry 是全进程共享、按插件函数为 key 的，会话实例与全局行同用一个
+   * mcp-client Runtime（fibers 合并）；discover() 借此把"我们自己刚连的会话实例"排除，
+   * 只露出"组合里已配置的 MCP"，避免出现 dshp-chrome-devtools-xxxx 这类派生噪点。
+   */
+  private readonly ownedServerNames = new Set<string>()
 
   /** 缓存白名单（上次读取）；写时同步磁盘。 */
   private cached: McpServerTemplate[]
@@ -214,16 +221,19 @@ export class SessionMcpManager {
         actives.add(fiber.config.serverName)
       }
     }
-    return this.discoveredTemplates().map(t => ({
-      name: t.name,
-      transport: t.transport,
-      ...(t.command === undefined ? {} : { command: t.command }),
-      ...(t.args === undefined ? {} : { args: [...t.args] }),
-      ...(t.url === undefined ? {} : { url: t.url }),
-      hasSecrets: (t.env !== undefined && Object.keys(t.env).length > 0) || (t.headers !== undefined && Object.keys(t.headers).length > 0),
-      globallyActive: actives.has(t.name),
-      managed: managed.has(t.name),
-    }))
+    return this.discoveredTemplates()
+      .filter(t => !this.ownedServerNames.has(t.name))
+      .map(t => ({
+        name: t.name,
+        transport: t.transport,
+        ...(t.command === undefined ? {} : { command: t.command }),
+        ...(t.args === undefined ? {} : { args: [...t.args] }),
+        ...(t.url === undefined ? {} : { url: t.url }),
+        hasSecrets: (t.env !== undefined && Object.keys(t.env).length > 0)
+          || (t.headers !== undefined && Object.keys(t.headers).length > 0),
+        globallyActive: actives.has(t.name),
+        managed: managed.has(t.name),
+      }))
   }
 
   /**
@@ -351,6 +361,8 @@ export class SessionMcpManager {
 
     const serverName = this.deriveServerName(agent, name)
     const config = this.toMcpConfig(template, serverName)
+    // 标记为"我们创建的会话实例"，discover() 据此把它从"已配置 MCP"里排除。
+    this.ownedServerNames.add(serverName)
 
     // 挂到 agent.ctx：mcp-client 的 ctx.get('tools') 落进该 agent scope。
     // apply 是 async（连接+首次工具发现），its Promise 需 await 以等待就绪，
@@ -378,6 +390,7 @@ export class SessionMcpManager {
     if (conn === undefined) return { ok: false, reason: `"${name}" is not connected in this session` }
     conn.dispose()
     map.delete(name)
+    this.ownedServerNames.delete(conn.serverName)
     this.bumpUse(name, -1)
     return { ok: true, name }
   }
@@ -388,6 +401,7 @@ export class SessionMcpManager {
     if (map === undefined) return
     for (const [name, conn] of map) {
       conn.dispose()
+      this.ownedServerNames.delete(conn.serverName)
       this.bumpUse(name, -1)
     }
     map.clear()
