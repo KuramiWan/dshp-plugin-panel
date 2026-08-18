@@ -1,0 +1,26 @@
+{
+  // 免 monorepo 独立构建的 client 类型检查/编译配置（发布方案一）。
+  // 运行时 peerDeps（@deepseek-ai/*、cordis、react）从本包自己安装的 node_modules 解析，
+  // 不再引用 deepseek-harness checkout 的 src/绝对路径。
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@deepseek-ai/cordis": ["./node_modules/@deepseek-ai/cordis/lib/types/index.d.ts"],
+      "@deepseek-ai/cordis/*": ["./node_modules/@deepseek-ai/cordis/lib/types/*"]
+    }
+  },
+  "include": ["src/client", "src/types.ts"],
+  "exclude": ["node_modules", "lib"]
+}

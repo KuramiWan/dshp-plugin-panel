@@ -1,0 +1,38 @@
+{
+  // 免 monorepo 独立构建的 host 类型检查配置（发布方案一）。
+  // 运行时 peerDeps（@deepseek-ai/*、cordis、schemastery）从本包自己安装的
+  // node_modules 解析，不再引用 deepseek-harness checkout 路径。
+  // 只查 host 侧（src 排除 src/client）；client 用 tsconfig.client.json。
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@deepseek-ai/cordis": ["./node_modules/@deepseek-ai/cordis/lib/types/index.d.ts"],
+      "@deepseek-ai/cordis/*": ["./node_modules/@deepseek-ai/cordis/lib/types/*"],
+      "@deepseek-ai/dsh-agent": ["./node_modules/@deepseek-ai/dsh-agent/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-agent/*": ["./node_modules/@deepseek-ai/dsh-agent/lib/types/*"],
+      "@deepseek-ai/dsh-commands": ["./node_modules/@deepseek-ai/dsh-commands/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-commands/*": ["./node_modules/@deepseek-ai/dsh-commands/lib/types/*"],
+      "@deepseek-ai/dsh-session": ["./node_modules/@deepseek-ai/dsh-session/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-session/types": ["./node_modules/@deepseek-ai/dsh-session/lib/types/types.d.ts"],
+      "@deepseek-ai/dsh-tools": ["./node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-tools/*": ["./node_modules/@deepseek-ai/dsh-tools/lib/types/*"],
+      "@deepseek-ai/dsh-skill": ["./node_modules/@deepseek-ai/dsh-skill/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-skill/*": ["./node_modules/@deepseek-ai/dsh-skill/lib/types/*"],
+      "@deepseek-ai/schemastery": ["./node_modules/@deepseek-ai/schemastery/lib/types/index.d.ts"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["src/client", "node_modules", "lib"]
+}
