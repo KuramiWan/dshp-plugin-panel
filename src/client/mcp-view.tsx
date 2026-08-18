@@ -127,7 +127,9 @@ export function SkillPanelMcpView(props: SkillPanelMcpViewProps) {
         <div className={notice.kind === 'ok' ? 'dshp-notice' : 'dshp-notice dshp-notice-error'}>{notice.text}</div>
       )}
 
-      <div className="dshp-subtitle">{t('mcp.discover.title')}</div>
+      <div className="dshp-tips">{t('mcp.tips')}</div>
+
+      <div className="dshp-section-title">{t('mcp.discover.title')}</div>
       {disc.length === 0 ? (
         <div className="dshp-empty">{t('mcp.discover.empty')}</div>
       ) : (
@@ -155,7 +157,7 @@ export function SkillPanelMcpView(props: SkillPanelMcpViewProps) {
         </div>
       )}
 
-      <div className="dshp-subtitle">{t('mcp.managed.title')}</div>
+      <div className="dshp-section-title">{t('mcp.managed.title')}</div>
       {man.length === 0 ? (
         <div className="dshp-empty">{t('mcp.empty')}</div>
       ) : (

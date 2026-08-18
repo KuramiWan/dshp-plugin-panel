@@ -31,6 +31,7 @@ export const zh = {
   // MCP 页签（会话级临时 MCP）
   'mcp.nav': 'MCP',
   'mcp.subtitle': '会话级临时 MCP：从白名单连接/断开 server，其工具仅对当前会话可见（会话结束即断）。与 session_mcp_* 工具共享同一状态。',
+  'mcp.tips': '这里【发现】DSH 组合里已配置的 MCP；点「加入管理」把它纳入会话级白名单，之后可对本会话连接/断开、并做兼容检查。本面板不创建/配置 MCP——配置由创造模式或你自己完成。',
   'mcp.empty': '尚未把任何 MCP 加入管理——在下方「发现」里选择要管理的已配置 MCP。',
   'mcp.discover.title': '发现（DSH 已配置的 MCP）',
   'mcp.discover.empty': '组合中没有已配置的 MCP 插件。',
@@ -101,6 +102,7 @@ export const en = {
   // MCP 页签（会话级临时 MCP）
   'mcp.nav': 'MCP',
   'mcp.subtitle': 'Session-scoped temporary MCP: connect/disconnect servers from the whitelist; their tools are visible only to this session (disconnected when the session ends). Shares one state with session_mcp_* tools.',
+  'mcp.tips': 'DISCOVER MCP servers already configured in the DSH composition here; click "Manage" to admit one into the session-scoped whitelist, then connect/disconnect it for this session and run compatibility checks. This panel does not create/configure MCP — configuration is done by the creative mode or by you.',
   'mcp.empty': 'Nothing is under management yet — pick a configured MCP from the Discovery section below.',
   'mcp.discover.title': 'Discovery (configured MCPs in DSH)',
   'mcp.discover.empty': 'No MCP plugins are configured in the composition.',
