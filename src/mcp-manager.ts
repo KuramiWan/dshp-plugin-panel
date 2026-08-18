@@ -162,27 +162,42 @@ export class SessionMcpManager {
   }
 
   /**
+   * mcp-client 插件配置签名：`serverName`（string）+ `transport`（stdio/streamable-http）。
+   * Cordis `fiber.name` 是插件显示名/行 id（如 `mcp-chrome-devtools`），不是包名，
+   * 故不能按包名过滤，须按该配置形状识别"这是一个 mcp-client 桥接的 server"。
+   */
+  private isMcpClientConfig(config: unknown): config is { serverName: string; transport: 'stdio' | 'streamable-http' } {
+    const c = config as Record<string, unknown> | undefined
+    return typeof c?.serverName === 'string' && c.serverName !== ''
+      && (c.transport === 'stdio' || c.transport === 'streamable-http')
+  }
+
+  /**
    * 从 DSH 组合(cordis.registry)枚举的 mcp-client 插件原始模板（含 env/headers secrets）。
    * 内部仅在本类使用；对外只暴露脱敏视图（discover）与"按名选择复制"（select）。
    */
   private discoveredTemplates(): McpServerTemplate[] {
     const out: McpServerTemplate[] = []
     for (const fiber of this.registryFibers()) {
-      if (fiber.name !== '@deepseek-ai/dsh-mcp-client') continue
-      const cfg = (fiber.config ?? {}) as Record<string, unknown>
-      if (typeof cfg.serverName !== 'string' || cfg.serverName === '') continue
-      const transport = cfg.transport === 'streamable-http' ? 'streamable-http' : 'stdio'
-      const template: McpServerTemplate = { name: cfg.serverName, transport }
-      if (typeof cfg.command === 'string') template.command = cfg.command
-      if (Array.isArray(cfg.args)) template.args = cfg.args.filter(a => typeof a === 'string') as string[]
-      if (typeof cfg.url === 'string') template.url = cfg.url
-      if (cfg.env !== undefined && typeof cfg.env === 'object') template.env = { ...(cfg.env as Record<string, string>) }
-      if (cfg.headers !== undefined && typeof cfg.headers === 'object') template.headers = { ...(cfg.headers as Record<string, string>) }
-      out.push(template)
+      if (!this.isMcpClientConfig(fiber.config)) continue
+      const cfg = fiber.config as { serverName: string; transport: 'stdio' | 'streamable-http'; command?: string; args?: unknown; url?: string; env?: unknown; headers?: unknown }
+      if (typeof cfg.command === 'string') out.push({ name: cfg.serverName, transport: cfg.transport, command: cfg.command })
+      else if (typeof cfg.url === 'string') out.push({ name: cfg.serverName, transport: cfg.transport, url: cfg.url })
+      else out.push({ name: cfg.serverName, transport: cfg.transport })
     }
-    // 按 serverName 去重（后出现的覆盖先出现的）。
+    // 补全 args / env / headers 到已建模板（保持原读取逻辑的完备性）。
     const byName = new Map<string, McpServerTemplate>()
-    for (const t of out) byName.set(t.name, t)
+    for (const fiber of this.registryFibers()) {
+      if (!this.isMcpClientConfig(fiber.config)) continue
+      const cfg = fiber.config as { serverName: string; transport: 'stdio' | 'streamable-http'; command?: string; args?: unknown; url?: string; env?: unknown; headers?: unknown }
+      const base = byName.get(cfg.serverName) ?? { name: cfg.serverName, transport: cfg.transport }
+      if (typeof cfg.command === 'string') base.command = cfg.command
+      if (typeof cfg.url === 'string') base.url = cfg.url
+      if (Array.isArray(cfg.args)) base.args = cfg.args.filter(a => typeof a === 'string') as string[]
+      if (cfg.env !== undefined && typeof cfg.env === 'object') base.env = { ...(cfg.env as Record<string, string>) }
+      if (cfg.headers !== undefined && typeof cfg.headers === 'object') base.headers = { ...(cfg.headers as Record<string, string>) }
+      byName.set(cfg.serverName, base)
+    }
     return [...byName.values()]
   }
 
@@ -195,9 +210,9 @@ export class SessionMcpManager {
     const managed = new Set(this.cached.map(s => s.name))
     const actives = new Set<string>()
     for (const fiber of this.registryFibers()) {
-      if (fiber.name !== '@deepseek-ai/dsh-mcp-client') continue
-      const cfg = (fiber.config ?? {}) as Record<string, unknown>
-      if (typeof cfg.serverName === 'string' && cfg.serverName !== '' && fiber.state === 2) actives.add(cfg.serverName)
+      if (this.isMcpClientConfig(fiber.config) && fiber.state === 2) {
+        actives.add(fiber.config.serverName)
+      }
     }
     return this.discoveredTemplates().map(t => ({
       name: t.name,
