@@ -10,7 +10,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { applySessionSkillTools } from './tools.ts'
 import { applySessionSkillCommands } from './commands.ts'
+import { applySessionMcpTools } from './mcp-tools.ts'
 import { SkillPanelService } from './skill-panel-service.ts'
+import { SessionMcpManager } from './mcp-manager.ts'
 import { resolvePoolRoot } from './pool.ts'
 import { SessionSkillStore } from './handles.ts'
 
@@ -27,6 +29,19 @@ export type {
   SkillPanelIntroduceResult,
   SkillPanelRemoveRequest,
   SkillPanelRemoveResult,
+  SkillPanelMcpEntry,
+  SkillPanelMcpListRequest,
+  SkillPanelMcpListResult,
+  SkillPanelMcpConnectRequest,
+  SkillPanelMcpConnectResult,
+  SkillPanelMcpDisconnectRequest,
+  SkillPanelMcpDisconnectResult,
+  SkillPanelMcpWhitelistRequest,
+  SkillPanelMcpWhitelistResult,
+  SkillPanelMcpUpsertRequest,
+  SkillPanelMcpUpsertResult,
+  SkillPanelMcpRemoveRequest,
+  SkillPanelMcpRemoveResult,
 } from './types.ts'
 
 export interface SkillControlConfig {
@@ -44,12 +59,15 @@ export class SkillControlPlugin {
   })
 
   private readonly store = new SessionSkillStore()
+  private readonly mcp: SessionMcpManager
 
   constructor(ctx: Context, config: SkillControlConfig = {}) {
     const poolRoot = resolvePoolRoot(config.poolRoot)
+    this.mcp = new SessionMcpManager(ctx, poolRoot)
     applySessionSkillTools(ctx, { poolRoot, store: this.store })
     applySessionSkillCommands(ctx, { poolRoot, store: this.store })
-    ctx.plugin(SkillPanelService, { poolRoot, store: this.store })
+    applySessionMcpTools(ctx, { manager: this.mcp })
+    ctx.plugin(SkillPanelService, { poolRoot, store: this.store, mcp: this.mcp })
   }
 }
 

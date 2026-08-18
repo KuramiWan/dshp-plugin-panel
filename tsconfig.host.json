@@ -16,6 +16,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
+    "ignoreDeprecations": "5.0",
     "baseUrl": ".",
     "paths": {
       "@deepseek-ai/cordis": ["./node_modules/@deepseek-ai/cordis/lib/types/index.d.ts"],
@@ -24,6 +25,8 @@
       "@deepseek-ai/dsh-agent/*": ["./node_modules/@deepseek-ai/dsh-agent/lib/types/*"],
       "@deepseek-ai/dsh-commands": ["./node_modules/@deepseek-ai/dsh-commands/lib/types/index.d.ts"],
       "@deepseek-ai/dsh-commands/*": ["./node_modules/@deepseek-ai/dsh-commands/lib/types/*"],
+      "@deepseek-ai/dsh-mcp-client": ["./node_modules/@deepseek-ai/dsh-mcp-client/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-mcp-client/*": ["./node_modules/@deepseek-ai/dsh-mcp-client/lib/types/*"],
       "@deepseek-ai/dsh-session": ["./node_modules/@deepseek-ai/dsh-session/lib/types/index.d.ts"],
       "@deepseek-ai/dsh-session/types": ["./node_modules/@deepseek-ai/dsh-session/lib/types/types.d.ts"],
       "@deepseek-ai/dsh-tools": ["./node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts"],

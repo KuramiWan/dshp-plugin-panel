@@ -21,6 +21,18 @@ import type {
   SkillPanelIntroduceResult,
   SkillPanelRemoveRequest,
   SkillPanelRemoveResult,
+  SkillPanelMcpListRequest,
+  SkillPanelMcpListResult,
+  SkillPanelMcpConnectRequest,
+  SkillPanelMcpConnectResult,
+  SkillPanelMcpDisconnectRequest,
+  SkillPanelMcpDisconnectResult,
+  SkillPanelMcpWhitelistRequest,
+  SkillPanelMcpWhitelistResult,
+  SkillPanelMcpUpsertRequest,
+  SkillPanelMcpUpsertResult,
+  SkillPanelMcpRemoveRequest,
+  SkillPanelMcpRemoveResult,
 } from '../types.ts'
 
 /**
@@ -33,6 +45,12 @@ export interface SkillPanelClient {
   detail(request: SkillPanelDetailRequest): Promise<SkillPanelDetailResult>
   introduce(request: SkillPanelIntroduceRequest): Promise<SkillPanelIntroduceResult>
   removeSkill(request: SkillPanelRemoveRequest): Promise<SkillPanelRemoveResult>
+  mcpList(request: SkillPanelMcpListRequest): Promise<SkillPanelMcpListResult>
+  mcpConnect(request: SkillPanelMcpConnectRequest): Promise<SkillPanelMcpConnectResult>
+  mcpDisconnect(request: SkillPanelMcpDisconnectRequest): Promise<SkillPanelMcpDisconnectResult>
+  mcpWhitelist(request: SkillPanelMcpWhitelistRequest): Promise<SkillPanelMcpWhitelistResult>
+  mcpUpsert(request: SkillPanelMcpUpsertRequest): Promise<SkillPanelMcpUpsertResult>
+  mcpRemove(request: SkillPanelMcpRemoveRequest): Promise<SkillPanelMcpRemoveResult>
 }
 
 /** POST 一个面板方法；HTTP 非 2xx 时抛出（优先取 body 的 reason）。 */
@@ -55,7 +73,7 @@ async function post(method: string, body: unknown): Promise<unknown> {
   return data
 }
 
-/** 把传输层异常 fold 成统一业务失败形状（匹配各结果联合的 ok:false 分支）。 */
+/** 把传输层异常 fold 成统一业务失败形状。 */
 function foldFail<T>(error: unknown): T {
   return { ok: false, reason: error instanceof Error ? error.message : String(error) } as T
 }
@@ -84,6 +102,36 @@ export function createSkillPanelClient(): SkillPanelClient {
         return (await post('removeSkill', request)) as SkillPanelRemoveResult
       } catch (error) {
         return foldFail<SkillPanelRemoveResult>(error)
+      }
+    },
+    mcpList: (request) => post('mcpList', request) as Promise<SkillPanelMcpListResult>,
+    mcpConnect: async (request) => {
+      try {
+        return (await post('mcpConnect', request)) as SkillPanelMcpConnectResult
+      } catch (error) {
+        return foldFail<SkillPanelMcpConnectResult>(error)
+      }
+    },
+    mcpDisconnect: async (request) => {
+      try {
+        return (await post('mcpDisconnect', request)) as SkillPanelMcpDisconnectResult
+      } catch (error) {
+        return foldFail<SkillPanelMcpDisconnectResult>(error)
+      }
+    },
+    mcpWhitelist: (request) => post('mcpWhitelist', request) as Promise<SkillPanelMcpWhitelistResult>,
+    mcpUpsert: async (request) => {
+      try {
+        return (await post('mcpUpsert', request)) as SkillPanelMcpUpsertResult
+      } catch (error) {
+        return foldFail<SkillPanelMcpUpsertResult>(error)
+      }
+    },
+    mcpRemove: async (request) => {
+      try {
+        return (await post('mcpRemove', request)) as SkillPanelMcpRemoveResult
+      } catch (error) {
+        return foldFail<SkillPanelMcpRemoveResult>(error)
       }
     },
   }

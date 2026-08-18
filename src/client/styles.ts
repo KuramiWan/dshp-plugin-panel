@@ -35,6 +35,15 @@ const CSS = `
 .dshp-page{display:flex;flex-direction:column;gap:12px;padding:2px 0 20px}
 .dshp-title{font-size:18px;font-weight:600;line-height:28px;color:var(--dsw-alias-label-primary,#1f2328)}
 .dshp-subtitle{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary,#9ca3af)}
+.dshp-tabs{display:flex;align-items:center;gap:4px;border-bottom:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.3));padding-bottom:6px}
+.dshp-tab{font-size:13px;line-height:20px;padding:4px 12px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-secondary,#4b5563);cursor:pointer}
+.dshp-tab:hover{background:var(--dsw-alias-bg-layer-2,rgba(128,128,128,.12))}
+.dshp-tab-active{border-color:var(--dsw-alias-border-l2,rgba(128,128,128,.4));background:var(--dsw-alias-bg-layer-1,transparent);color:var(--dsw-alias-label-primary,#1f2328)}
+.dshp-form{display:flex;flex-direction:column;gap:8px;border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.4));border-radius:8px;padding:12px}
+.dshp-form-title{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary,#1f2328)}
+.dshp-field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--dsw-alias-label-secondary,#4b5563)}
+.dshp-input{background:var(--dsw-alias-bg-layer-1,transparent);border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.4));border-radius:6px;padding:4px 8px;color:var(--dsw-alias-label-primary,#1f2328);font-size:13px;line-height:20px}
+.dshp-input:focus{outline:none;border-color:var(--dsw-alias-brand-primary,#2563eb)}
 `
 
 export function ensureStyle(ctx: Context): void {

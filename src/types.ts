@@ -79,3 +79,68 @@ export interface SkillPanelRemoveRequest {
 export type SkillPanelRemoveResult =
   | { readonly ok: true; readonly name: string }
   | { readonly ok: false; readonly reason: string }
+
+// ---- 面板 MCP 管理边界载荷（会话级临时 MCP，7b 面板入口） ----
+
+export interface SkillPanelMcpEntry {
+  readonly name: string
+  readonly description?: string
+  readonly transport: 'stdio' | 'streamable-http'
+  readonly command?: string
+  readonly args?: readonly string[]
+  readonly url?: string
+  /** 会话视图标记；白名单视图（模板列表）无此语义，可省略。 */
+  readonly connected?: boolean
+}
+
+export interface SkillPanelMcpListRequest {
+  readonly sessionId: string
+}
+
+export interface SkillPanelMcpListResult {
+  readonly entries: readonly SkillPanelMcpEntry[]
+}
+
+export interface SkillPanelMcpConnectRequest {
+  readonly sessionId: string
+  readonly name: string
+}
+
+export type SkillPanelMcpConnectResult =
+  | { readonly ok: true; readonly name: string; readonly alreadyConnected: boolean }
+  | { readonly ok: false; readonly reason: string }
+
+export interface SkillPanelMcpDisconnectRequest {
+  readonly sessionId: string
+  readonly name: string
+}
+
+export type SkillPanelMcpDisconnectResult =
+  | { readonly ok: true; readonly name: string }
+  | { readonly ok: false; readonly reason: string }
+
+export interface SkillPanelMcpWhitelistRequest {
+  readonly sessionId: string
+}
+
+export interface SkillPanelMcpWhitelistResult {
+  readonly servers: readonly SkillPanelMcpEntry[]
+}
+
+export interface SkillPanelMcpUpsertRequest {
+  readonly sessionId: string
+  readonly server: SkillPanelMcpEntry
+}
+
+export type SkillPanelMcpUpsertResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: string }
+
+export interface SkillPanelMcpRemoveRequest {
+  readonly sessionId: string
+  readonly name: string
+}
+
+export type SkillPanelMcpRemoveResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: string }

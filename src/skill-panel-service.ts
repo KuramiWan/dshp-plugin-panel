@@ -20,6 +20,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { findPoolEntry, readSkillContent } from './pool.ts'
 import { browsePool, introduceSkill, removeSkill, filterBrowse } from './actions.ts'
 import type { SessionSkillStore } from './handles.ts'
+import type { SessionMcpManager, McpServerTemplate } from './mcp-manager.ts'
 import type {
   SkillPanelBrowseEntry,
   SkillPanelBrowseRequest,
@@ -32,6 +33,18 @@ import type {
   SkillPanelListResult,
   SkillPanelRemoveRequest,
   SkillPanelRemoveResult,
+  SkillPanelMcpListRequest,
+  SkillPanelMcpListResult,
+  SkillPanelMcpConnectRequest,
+  SkillPanelMcpConnectResult,
+  SkillPanelMcpDisconnectRequest,
+  SkillPanelMcpDisconnectResult,
+  SkillPanelMcpWhitelistRequest,
+  SkillPanelMcpWhitelistResult,
+  SkillPanelMcpUpsertRequest,
+  SkillPanelMcpUpsertResult,
+  SkillPanelMcpRemoveRequest,
+  SkillPanelMcpRemoveResult,
 } from './types.ts'
 
 export interface SkillPanelServiceOptions {
@@ -39,6 +52,8 @@ export interface SkillPanelServiceOptions {
   readonly poolRoot: string
   /** 会话引入句柄存储（插件实例共享）。 */
   readonly store: SessionSkillStore
+  /** 会话级临时 MCP 管理器。 */
+  readonly mcp: SessionMcpManager
 }
 
 /** 面板 host 服务：只读为主；写操作与命令/工具同路径。 */
@@ -51,11 +66,13 @@ export class SkillPanelService {
   private readonly ctx: Context
   private readonly poolRoot: string
   private readonly store: SessionSkillStore
+  private readonly mcp: SessionMcpManager
 
   constructor(ctx: Context, options: SkillPanelServiceOptions) {
     this.ctx = ctx
     this.poolRoot = options.poolRoot
     this.store = options.store
+    this.mcp = options.mcp
 
     ctx.effect(() => ctx.webServer.register({
       kind: 'prefix',
@@ -104,6 +121,24 @@ export class SkillPanelService {
           break
         case 'removeSkill':
           result = this.removeSkill(payload as unknown as SkillPanelRemoveRequest)
+          break
+        case 'mcpList':
+          result = this.mcpList(payload as unknown as SkillPanelMcpListRequest)
+          break
+        case 'mcpConnect':
+          result = await this.mcpConnect(payload as unknown as SkillPanelMcpConnectRequest)
+          break
+        case 'mcpDisconnect':
+          result = this.mcpDisconnect(payload as unknown as SkillPanelMcpDisconnectRequest)
+          break
+        case 'mcpWhitelist':
+          result = this.mcpWhitelist(payload as unknown as SkillPanelMcpWhitelistRequest)
+          break
+        case 'mcpUpsert':
+          result = this.mcpUpsert(payload as unknown as SkillPanelMcpUpsertRequest)
+          break
+        case 'mcpRemove':
+          result = this.mcpRemove(payload as unknown as SkillPanelMcpRemoveRequest)
           break
         default:
           this.send(res, 404, { ok: false, reason: `unknown method "${method}"` })
@@ -197,5 +232,54 @@ export class SkillPanelService {
     const result = removeSkill(this.store, agent, request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
     return { ok: true, name: result.name }
+  }
+
+  /** 会话 MCP：当前会话已连 server + 白名单候选视图。 */
+  mcpList(request: SkillPanelMcpListRequest): SkillPanelMcpListResult {
+    const agent = this.agentOf(request.sessionId)
+    return { entries: this.mcp.views(agent) }
+  }
+
+  /** 会话 MCP：从白名单连一个 server 到当前会话（幂等）。 */
+  async mcpConnect(request: SkillPanelMcpConnectRequest): Promise<SkillPanelMcpConnectResult> {
+    const agent = this.agentOf(request.sessionId)
+    const result = await this.mcp.connect(agent, request.name)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true, name: result.name, alreadyConnected: result.alreadyConnected }
+  }
+
+  /** 会话 MCP：断开当前会话的一个 server（幂等）。 */
+  mcpDisconnect(request: SkillPanelMcpDisconnectRequest): SkillPanelMcpDisconnectResult {
+    const agent = this.agentOf(request.sessionId)
+    const result = this.mcp.disconnect(agent, request.name)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true, name: result.name }
+  }
+
+  /** 会话 MCP：白名单全文（候选模板，非会话维度；不透出 env/headers 等敏感字段）。 */
+  mcpWhitelist(request: SkillPanelMcpWhitelistRequest): SkillPanelMcpWhitelistResult {
+    const servers = this.mcp.whitelist().map(s => ({
+      name: s.name,
+      ...(s.description === undefined ? {} : { description: s.description }),
+      transport: s.transport,
+      ...(s.command === undefined ? {} : { command: s.command }),
+      ...(s.args === undefined ? {} : { args: s.args }),
+      ...(s.url === undefined ? {} : { url: s.url }),
+    }))
+    return { servers }
+  }
+
+  /** 会话 MCP：新增/覆盖一条白名单候选（8b）。 */
+  mcpUpsert(request: SkillPanelMcpUpsertRequest): SkillPanelMcpUpsertResult {
+    const result = this.mcp.upsertTemplate(request.server as McpServerTemplate)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true }
+  }
+
+  /** 会话 MCP：删除一条白名单候选（8b）。 */
+  mcpRemove(request: SkillPanelMcpRemoveRequest): SkillPanelMcpRemoveResult {
+    const result = this.mcp.removeTemplate(request.name)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true }
   }
 }
