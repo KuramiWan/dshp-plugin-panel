@@ -1,5 +1,5 @@
 /**
- * DSHP 池读取层（Skills 池的能力面）：目录扫描、SKILL.md frontmatter 解析、信任校验、未订阅生态目录。
+ * DSHP 池读取层（DSHP src/pool.ts 的可运行副本；规范源在 DSHP，本副本供 checkout 插件构建）。
  * 目录扫描 / SKILL.md frontmatter 解析 / 信任校验；与 scripts/ecosystem-catalog.ps1 约定一致。
  * 注意：Node 26 的 V8 不接受 (?m) 内联标志——逐行匹配，无内联标志。
  */
@@ -270,5 +270,3 @@ export function readSkillContent(entry: PoolEntry): SkillContent | undefined {
     directory: entry.directory,
   }
 }
-
-

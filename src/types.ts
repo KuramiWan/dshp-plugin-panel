@@ -88,6 +88,10 @@ export interface SkillPanelMcpEntry {
   readonly transport: 'stdio' | 'streamable-http'
   readonly command?: string
   readonly args?: readonly string[]
+  /** stdio：附加环境变量（写不读回，面板不回显 secret）。 */
+  readonly env?: Readonly<Record<string, string>>
+  /** streamable-http：附加请求头（写不读回，面板不回显 secret）。 */
+  readonly headers?: Readonly<Record<string, string>>
   readonly url?: string
   /** 会话视图标记；白名单视图（模板列表）无此语义，可省略。 */
   readonly connected?: boolean
@@ -143,4 +147,47 @@ export interface SkillPanelMcpRemoveRequest {
 
 export type SkillPanelMcpRemoveResult =
   | { readonly ok: true }
+  | { readonly ok: false; readonly reason: string }
+
+// ---- 发现与兼容（管理"已配置好的 MCP"，不创建/配置） ----
+
+/** 从 DSH 组合发现的、已配置好的 MCP 服务器（脱敏视图）。 */
+export interface SkillPanelMcpDiscovered {
+  readonly name: string
+  readonly transport: 'stdio' | 'streamable-http'
+  readonly command?: string
+  readonly args?: readonly string[]
+  readonly url?: string
+  /** 是否带 env/headers —— 只揭示存在性，不回显值。 */
+  readonly hasSecrets: boolean
+  /** 该 mcp-client 插件是否已在组合中全局启用。 */
+  readonly globallyActive: boolean
+  /** 是否已在我们的管理白名单中。 */
+  readonly managed: boolean
+}
+
+export interface SkillPanelMcpDiscoverRequest {
+  readonly sessionId: string
+}
+
+export interface SkillPanelMcpDiscoverResult {
+  readonly entries: readonly SkillPanelMcpDiscovered[]
+}
+
+export interface SkillPanelMcpSelectRequest {
+  readonly sessionId: string
+  readonly name: string
+}
+
+export type SkillPanelMcpSelectResult =
+  | { readonly ok: true; readonly entry: SkillPanelMcpDiscovered }
+  | { readonly ok: false; readonly reason: string }
+
+export interface SkillPanelMcpCheckRequest {
+  readonly sessionId: string
+  readonly name: string
+}
+
+export type SkillPanelMcpCheckResult =
+  | { readonly ok: true; readonly toolCount: number; readonly serverName: string }
   | { readonly ok: false; readonly reason: string }

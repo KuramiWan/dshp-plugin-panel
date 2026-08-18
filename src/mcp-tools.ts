@@ -39,7 +39,7 @@ export function applySessionMcpTools(ctx: Context, config: SessionMcpConfig): vo
       render: (_args, value) => {
         const servers = (value as { servers: Array<{ name: string; transport: string; connected: boolean }> }).servers
         if (servers.length === 0) return [{ type: 'text', text: 'no MCP servers in whitelist' }]
-        const lines = servers.map(s => {
+        const lines = servers.map((s) => {
           const state = s.connected ? ' [connected]' : ' [available]'
           return '- ' + s.name + ' (' + s.transport + ')' + state
         })

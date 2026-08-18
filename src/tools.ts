@@ -22,7 +22,7 @@ export interface SessionSkillConfig {
 
 function renderBrowse(items: PoolBrowseEntry[]): string {
   if (items.length === 0) return 'no skills in pool'
-  const lines = items.map(item => {
+  const lines = items.map((item) => {
     const tag = item.origin === 'local' ? 'local' : 'ecosystem:' + (item.source ?? '?')
     const state = item.introduced ? ' [introduced]' : item.blockReason !== undefined ? ' [blocked]' : ''
     return '- ' + item.name + ' (' + tag + ')' + state + ': ' + item.description
@@ -114,7 +114,7 @@ export function applySessionSkillTools(ctx: Context, config: SessionSkillConfig)
       if (names.length === 0) return { skills: [] }
       const view = await ctx.skills.list({ scope: agent })
       return {
-        skills: names.map(name => {
+        skills: names.map((name) => {
           const match = view.find(skill => skill.name === name)
           return { name, ...(match?.description === undefined ? {} : { description: match.description }) }
         }),

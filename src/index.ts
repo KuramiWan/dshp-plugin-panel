@@ -42,6 +42,13 @@ export type {
   SkillPanelMcpUpsertResult,
   SkillPanelMcpRemoveRequest,
   SkillPanelMcpRemoveResult,
+  SkillPanelMcpDiscovered,
+  SkillPanelMcpDiscoverRequest,
+  SkillPanelMcpDiscoverResult,
+  SkillPanelMcpSelectRequest,
+  SkillPanelMcpSelectResult,
+  SkillPanelMcpCheckRequest,
+  SkillPanelMcpCheckResult,
 } from './types.ts'
 
 export interface SkillControlConfig {

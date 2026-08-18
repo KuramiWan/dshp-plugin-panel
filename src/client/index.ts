@@ -6,28 +6,28 @@
  * host webServer 路由随 host 半同步注册，client 半无需等待 remote 就绪，
  * 实例化后直接可用，故此处不再需要旧的 remote 轮询包装。
  */
-import { createElement } from 'react';
-import type { Context } from '@deepseek-ai/cordis';
-import { NS, en, zh } from './locale.ts';
-import type { SkillPanelLocaleDict } from './locale.ts';
-import { ensureStyle } from './styles.ts';
-import { SkillPanelSettingsSection } from './sections.tsx';
-import { createSkillPanelClient } from './api.ts';
+import { createElement } from 'react'
+import type { Context } from '@deepseek-ai/cordis'
+import { NS, en, zh } from './locale.ts'
+import type { SkillPanelLocaleDict } from './locale.ts'
+import { ensureStyle } from './styles.ts'
+import { SkillPanelSettingsSection } from './sections.tsx'
+import { createSkillPanelClient } from './api.ts'
 
-export const inject = ['slots', 'locale'];
+export const inject = ['slots', 'locale']
 
-type Translate = (key: keyof SkillPanelLocaleDict) => string;
+type Translate = (key: keyof SkillPanelLocaleDict) => string
 
 export function apply(ctx: Context): void {
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'skill-panel: dictionaries');
-  ensureStyle(ctx);
-  const t = ctx.locale.bind(NS) as Translate;
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'skill-panel: dictionaries')
+  ensureStyle(ctx)
+  const t = ctx.locale.bind(NS) as Translate
 
   // HTTP 客户端：无 remote 网关，无就绪竞态，实例化后即可调用。
-  const client = createSkillPanelClient();
+  const client = createSkillPanelClient()
 
   function SkillPanelSectionEntry(props: unknown) {
-    return createElement(SkillPanelSettingsSection, { ...(props as object), client, t });
+    return createElement(SkillPanelSettingsSection, { ...(props as object), client, t })
   }
 
   ctx.slots.inject('settings.section', () =>
@@ -41,5 +41,5 @@ export function apply(ctx: Context): void {
       },
       SkillPanelSectionEntry,
     ),
-  );
+  )
 }

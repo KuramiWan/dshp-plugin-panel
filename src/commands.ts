@@ -18,7 +18,7 @@ export interface SessionSkillCommandConfig {
 
 function renderBrowse(items: readonly PoolBrowseEntry[]): string {
   if (items.length === 0) return '📚 技能池：无技能（先运行生态目录构建脚本填充本地池）'
-  const lines = items.map(item => {
+  const lines = items.map((item) => {
     const tag = item.origin === 'local' ? 'local' : 'ecosystem:' + (item.source ?? '?')
     const state = item.introduced ? ' [已引入]' : item.blockReason !== undefined ? ' [不可用]' : ''
     return '  - ' + item.name + ' (' + tag + ')' + state + ': ' + item.description
@@ -58,7 +58,7 @@ async function handlerList(ctx: Context, store: SessionSkillStore, invocation: C
   const names = store.names(agent)
   if (names.length === 0) return { kind: 'success', text: '📋 当前会话已引入技能：0 个' }
   const view = await ctx.skills.list({ scope: agent })
-  const lines = names.map(name => {
+  const lines = names.map((name) => {
     const match = view.find(skill => skill.name === name)
     return '  - ' + name + (match?.description === undefined ? '' : ': ' + match.description)
   })

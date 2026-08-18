@@ -45,6 +45,12 @@ import type {
   SkillPanelMcpUpsertResult,
   SkillPanelMcpRemoveRequest,
   SkillPanelMcpRemoveResult,
+  SkillPanelMcpDiscoverRequest,
+  SkillPanelMcpDiscoverResult,
+  SkillPanelMcpSelectRequest,
+  SkillPanelMcpSelectResult,
+  SkillPanelMcpCheckRequest,
+  SkillPanelMcpCheckResult,
 } from './types.ts'
 
 export interface SkillPanelServiceOptions {
@@ -140,6 +146,15 @@ export class SkillPanelService {
         case 'mcpRemove':
           result = this.mcpRemove(payload as unknown as SkillPanelMcpRemoveRequest)
           break
+        case 'mcpDiscover':
+          result = this.mcpDiscover(payload as unknown as SkillPanelMcpDiscoverRequest)
+          break
+        case 'mcpSelect':
+          result = this.mcpSelect(payload as unknown as SkillPanelMcpSelectRequest)
+          break
+        case 'mcpCheck':
+          result = await this.mcpCheck(payload as unknown as SkillPanelMcpCheckRequest)
+          break
         default:
           this.send(res, 404, { ok: false, reason: `unknown method "${method}"` })
           return
@@ -159,7 +174,7 @@ export class SkillPanelService {
   private readBody(req: IncomingMessage): Promise<string> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = []
-      req.on('data', chunk => { chunks.push(chunk as Buffer) })
+      req.on('data', (chunk) => { chunks.push(chunk as Buffer) })
       req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
       req.on('error', reject)
     })
@@ -188,7 +203,7 @@ export class SkillPanelService {
     if (names.length === 0) return { skills: [] }
     const view = await this.ctx.skills.list({ scope: agent })
     return {
-      skills: names.map(name => {
+      skills: names.map((name) => {
         const match = view.find(skill => skill.name === name)
         return { name, ...(match?.description === undefined ? {} : { description: match.description }) }
       }),
@@ -257,7 +272,7 @@ export class SkillPanelService {
   }
 
   /** 会话 MCP：白名单全文（候选模板，非会话维度；不透出 env/headers 等敏感字段）。 */
-  mcpWhitelist(request: SkillPanelMcpWhitelistRequest): SkillPanelMcpWhitelistResult {
+  mcpWhitelist(_request: SkillPanelMcpWhitelistRequest): SkillPanelMcpWhitelistResult {
     const servers = this.mcp.whitelist().map(s => ({
       name: s.name,
       ...(s.description === undefined ? {} : { description: s.description }),
@@ -281,5 +296,27 @@ export class SkillPanelService {
     const result = this.mcp.removeTemplate(request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
     return { ok: true }
+  }
+
+  /** 发现：从 DSH 组合枚举已配置的 MCP 插件（不创建/配置，只读发现）。 */
+  mcpDiscover(request: SkillPanelMcpDiscoverRequest): SkillPanelMcpDiscoverResult {
+    this.agentOf(request.sessionId)
+    return { entries: this.mcp.discover() }
+  }
+
+  /** 管理范围：把发现的某个已配置 MCP 加入白名单（服务端整体复制配置，含 secrets，不回显）。 */
+  mcpSelect(request: SkillPanelMcpSelectRequest): SkillPanelMcpSelectResult {
+    this.agentOf(request.sessionId)
+    const result = this.mcp.select(request.name)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true, entry: result.entry }
+  }
+
+  /** 兼容检查：真连一次该 server + 拉工具清单 + 断开，报工具数与列出的原因。 */
+  async mcpCheck(request: SkillPanelMcpCheckRequest): Promise<SkillPanelMcpCheckResult> {
+    const agent = this.agentOf(request.sessionId)
+    const result = await this.mcp.check(agent, request.name)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true, serverName: result.serverName, toolCount: result.toolCount }
   }
 }

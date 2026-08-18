@@ -44,8 +44,8 @@ export function SkillPanelView(props: SkillPanelViewProps) {
       ...(origin === 'all' ? {} : { origin }),
       ...(query.trim().length === 0 ? {} : { query: query.trim() }),
       limit: 200,
-    }).then(result => {
-      setEntries([...(result.entries ?? [])])
+    }).then((result) => {
+      setEntries(result.entries ?? [])
       setBusy(false)
     }).catch(() => {
       setError(true)
@@ -55,7 +55,6 @@ export function SkillPanelView(props: SkillPanelViewProps) {
 
   useEffect(() => {
     refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, origin, query])
 
   const visible = useMemo(() => entries ?? [], [entries])
@@ -63,7 +62,7 @@ export function SkillPanelView(props: SkillPanelViewProps) {
   const runIntroduce = (name: string): void => {
     if (busy || client === undefined) return
     setBusy(true)
-    void client.introduce({ sessionId, name }).then(result => {
+    void client.introduce({ sessionId, name }).then((result) => {
       setBusy(false)
       if (result.ok) {
         setNotice({
@@ -85,7 +84,7 @@ export function SkillPanelView(props: SkillPanelViewProps) {
   const runRemove = (name: string): void => {
     if (busy || client === undefined) return
     setBusy(true)
-    void client.removeSkill({ sessionId, name }).then(result => {
+    void client.removeSkill({ sessionId, name }).then((result) => {
       setBusy(false)
       setNotice(result.ok ? { kind: 'ok', text: t('notice.removed') } : { kind: 'error', text: `${t('notice.failed')}: ${result.reason}` })
       refresh()
@@ -104,7 +103,7 @@ export function SkillPanelView(props: SkillPanelViewProps) {
     }
     setOpenDetail(name)
     setDetail(null)
-    void client.detail({ sessionId, name }).then(result => {
+    void client.detail({ sessionId, name }).then((result) => {
       if (result.ok) setDetail({ whenToUse: result.whenToUse, content: result.content })
       else setDetail({ content: result.reason ?? '' })
     }).catch(() => setDetail({ content: t('error') }))
@@ -117,9 +116,9 @@ export function SkillPanelView(props: SkillPanelViewProps) {
           className="dshp-search"
           placeholder={t('search.placeholder')}
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={event => setQuery(event.target.value)}
         />
-        <select className="dshp-select" value={origin} onChange={(event) => setOrigin(event.target.value as 'all' | 'local' | 'ecosystem')}>
+        <select className="dshp-select" value={origin} onChange={event => setOrigin(event.target.value as 'all' | 'local' | 'ecosystem')}>
           <option value="all">{t('origin.all')}</option>
           <option value="local">{t('origin.local')}</option>
           <option value="ecosystem">{t('origin.ecosystem')}</option>
@@ -151,13 +150,13 @@ export function SkillPanelView(props: SkillPanelViewProps) {
                   {entry.introduced
                     ? <button className="dshp-btn dshp-btn-danger" onClick={() => runRemove(entry.name)}>{t('action.remove')}</button>
                     : <button
-                        className="dshp-btn dshp-btn-primary"
-                        disabled={!entry.available || entry.blockReason !== undefined}
-                        title={entry.blockReason}
-                        onClick={() => runIntroduce(entry.name)}
-                      >
-                        {t('action.introduce')}
-                      </button>}
+                      className="dshp-btn dshp-btn-primary"
+                      disabled={!entry.available || entry.blockReason !== undefined}
+                      title={entry.blockReason}
+                      onClick={() => runIntroduce(entry.name)}
+                    >
+                      {t('action.introduce')}
+                    </button>}
                   <button className="dshp-btn" onClick={() => toggleDetail(entry.name)}>
                     {openDetail === entry.name ? t('action.collapse') : t('action.detail')}
                   </button>

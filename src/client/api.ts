@@ -33,6 +33,12 @@ import type {
   SkillPanelMcpUpsertResult,
   SkillPanelMcpRemoveRequest,
   SkillPanelMcpRemoveResult,
+  SkillPanelMcpDiscoverRequest,
+  SkillPanelMcpDiscoverResult,
+  SkillPanelMcpSelectRequest,
+  SkillPanelMcpSelectResult,
+  SkillPanelMcpCheckRequest,
+  SkillPanelMcpCheckResult,
 } from '../types.ts'
 
 /**
@@ -51,6 +57,9 @@ export interface SkillPanelClient {
   mcpWhitelist(request: SkillPanelMcpWhitelistRequest): Promise<SkillPanelMcpWhitelistResult>
   mcpUpsert(request: SkillPanelMcpUpsertRequest): Promise<SkillPanelMcpUpsertResult>
   mcpRemove(request: SkillPanelMcpRemoveRequest): Promise<SkillPanelMcpRemoveResult>
+  mcpDiscover(request: SkillPanelMcpDiscoverRequest): Promise<SkillPanelMcpDiscoverResult>
+  mcpSelect(request: SkillPanelMcpSelectRequest): Promise<SkillPanelMcpSelectResult>
+  mcpCheck(request: SkillPanelMcpCheckRequest): Promise<SkillPanelMcpCheckResult>
 }
 
 /** POST 一个面板方法；HTTP 非 2xx 时抛出（优先取 body 的 reason）。 */
@@ -81,8 +90,8 @@ function foldFail<T>(error: unknown): T {
 /** 创建 HTTP 客户端：实例化后无需等待 remote 就绪，可直接调用。 */
 export function createSkillPanelClient(): SkillPanelClient {
   return {
-    browse: (request) => post('browse', request) as Promise<SkillPanelBrowseResult>,
-    list: (request) => post('list', request) as Promise<SkillPanelListResult>,
+    browse: request => post('browse', request) as Promise<SkillPanelBrowseResult>,
+    list: request => post('list', request) as Promise<SkillPanelListResult>,
     detail: async (request) => {
       try {
         return (await post('detail', request)) as SkillPanelDetailResult
@@ -104,7 +113,7 @@ export function createSkillPanelClient(): SkillPanelClient {
         return foldFail<SkillPanelRemoveResult>(error)
       }
     },
-    mcpList: (request) => post('mcpList', request) as Promise<SkillPanelMcpListResult>,
+    mcpList: request => post('mcpList', request) as Promise<SkillPanelMcpListResult>,
     mcpConnect: async (request) => {
       try {
         return (await post('mcpConnect', request)) as SkillPanelMcpConnectResult
@@ -119,7 +128,7 @@ export function createSkillPanelClient(): SkillPanelClient {
         return foldFail<SkillPanelMcpDisconnectResult>(error)
       }
     },
-    mcpWhitelist: (request) => post('mcpWhitelist', request) as Promise<SkillPanelMcpWhitelistResult>,
+    mcpWhitelist: request => post('mcpWhitelist', request) as Promise<SkillPanelMcpWhitelistResult>,
     mcpUpsert: async (request) => {
       try {
         return (await post('mcpUpsert', request)) as SkillPanelMcpUpsertResult
@@ -132,6 +141,21 @@ export function createSkillPanelClient(): SkillPanelClient {
         return (await post('mcpRemove', request)) as SkillPanelMcpRemoveResult
       } catch (error) {
         return foldFail<SkillPanelMcpRemoveResult>(error)
+      }
+    },
+    mcpDiscover: request => post('mcpDiscover', request) as Promise<SkillPanelMcpDiscoverResult>,
+    mcpSelect: async (request) => {
+      try {
+        return (await post('mcpSelect', request)) as SkillPanelMcpSelectResult
+      } catch (error) {
+        return foldFail<SkillPanelMcpSelectResult>(error)
+      }
+    },
+    mcpCheck: async (request) => {
+      try {
+        return (await post('mcpCheck', request)) as SkillPanelMcpCheckResult
+      } catch (error) {
+        return foldFail<SkillPanelMcpCheckResult>(error)
       }
     },
   }

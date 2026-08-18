@@ -34,7 +34,7 @@ export type RemoveResult =
 /** 生成池浏览条目列表（本地 + 已订阅生态 + 未订阅目录），标记 introduced 与 blockReason。 */
 export function browsePool(poolRoot: string, agent: Agent, store: SessionSkillStore): PoolBrowseEntry[] {
   const introduced = new Set(store.names(agent))
-  return [...listPoolEntries(poolRoot), ...listUnsubscribedCatalogEntries(poolRoot)].map(entry => {
+  return [...listPoolEntries(poolRoot), ...listUnsubscribedCatalogEntries(poolRoot)].map((entry) => {
     const blockReason = !entry.available
       ? '未订阅'
       : entry.origin === 'ecosystem' && !entry.trusted
@@ -70,7 +70,9 @@ export function filterBrowse(
  * 从池引入 skill 到当前会话（幂等；同名影子覆盖仅本会话）。
  * 统一校验序列：名称 → 幂等 → 存在 → 订阅 → 信任 → 可读 → 注册。
  */
-export async function introduceSkill(ctx: Context, poolRoot: string, store: SessionSkillStore, agent: Agent, name: string): Promise<IntroduceResult> {
+export async function introduceSkill(
+  ctx: Context, poolRoot: string, store: SessionSkillStore, agent: Agent, name: string,
+): Promise<IntroduceResult> {
   if (!isValidSkillName(name)) return { ok: false, reason: `非法技能名 "${name}"` }
   if (store.disposer(agent, name) !== undefined) {
     return { ok: true, name, origin: 'local', shadowed: false, alreadyIntroduced: true }

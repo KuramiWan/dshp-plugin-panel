@@ -44,6 +44,9 @@ const CSS = `
 .dshp-field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--dsw-alias-label-secondary,#4b5563)}
 .dshp-input{background:var(--dsw-alias-bg-layer-1,transparent);border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.4));border-radius:6px;padding:4px 8px;color:var(--dsw-alias-label-primary,#1f2328);font-size:13px;line-height:20px}
 .dshp-input:focus{outline:none;border-color:var(--dsw-alias-brand-primary,#2563eb)}
+.dshp-textarea{background:var(--dsw-alias-bg-layer-1,transparent);border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.4));border-radius:6px;padding:4px 8px;color:var(--dsw-alias-label-primary,#1f2328);font-size:12px;line-height:18px;font-family:inherit;resize:vertical;min-height:52px}
+.dshp-textarea:focus{outline:none;border-color:var(--dsw-alias-brand-primary,#2563eb)}
+.dshp-hint{font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary,#9ca3af)}
 `
 
 export function ensureStyle(ctx: Context): void {

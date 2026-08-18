@@ -54,6 +54,25 @@ export interface McpServerTemplateView {
   connected: boolean
 }
 
+/**
+ * 从 DSH 组合（cordis.registry）发现的一个已配置 MCP 插件（mcp-client 行）。
+ * 只读视图：env/headers 不透出值（secrets），仅揭示是否存在；配置本身由用户/DSH 维护。
+ */
+export interface McpDiscoveredView {
+  /** serverName（mcp-client 的工具 namespace，也是稳定标识）。 */
+  name: string
+  transport: 'stdio' | 'streamable-http'
+  command?: string
+  args?: string[]
+  url?: string
+  /** 该 server 是否带 env（stdio）/ headers（http）——只揭示存在性，不回显值。 */
+  hasSecrets: boolean
+  /** 该 mcp-client 插件是否已在组合中全局启用（fiber ACTIVE）。 */
+  globallyActive: boolean
+  /** 是否已在我们的管理白名单中。 */
+  managed: boolean
+}
+
 /** 一个活跃连接（每个 (agent, whitelistName) 一个）。 */
 interface Connection {
   /** 按 agent 派生的唯一 serverName。 */
@@ -127,6 +146,96 @@ export class SessionMcpManager {
       ...(template.url === undefined ? {} : { url: template.url }),
       connected: connected.has(template.name),
     }))
+  }
+
+  /**
+   * 从 ordis.registry 拍平所有已加载插件 Fiber（含 mcp-client）。registry 是
+   * Map<unknown, { fibers }>，Fiber 携带 name/state/config。
+   */
+  private registryFibers(): { name?: unknown; state?: number; config?: unknown }[] {
+    const registry = this.context.registry as unknown as Map<unknown, { fibers?: { name?: unknown; state?: number; config?: unknown }[] }>
+    const out: { name?: unknown; state?: number; config?: unknown }[] = []
+    for (const runtime of registry.values()) {
+      for (const fiber of runtime.fibers ?? []) out.push(fiber)
+    }
+    return out
+  }
+
+  /**
+   * 从 DSH 组合(cordis.registry)枚举的 mcp-client 插件原始模板（含 env/headers secrets）。
+   * 内部仅在本类使用；对外只暴露脱敏视图（discover）与"按名选择复制"（select）。
+   */
+  private discoveredTemplates(): McpServerTemplate[] {
+    const out: McpServerTemplate[] = []
+    for (const fiber of this.registryFibers()) {
+      if (fiber.name !== '@deepseek-ai/dsh-mcp-client') continue
+      const cfg = (fiber.config ?? {}) as Record<string, unknown>
+      if (typeof cfg.serverName !== 'string' || cfg.serverName === '') continue
+      const transport = cfg.transport === 'streamable-http' ? 'streamable-http' : 'stdio'
+      const template: McpServerTemplate = { name: cfg.serverName, transport }
+      if (typeof cfg.command === 'string') template.command = cfg.command
+      if (Array.isArray(cfg.args)) template.args = cfg.args.filter(a => typeof a === 'string') as string[]
+      if (typeof cfg.url === 'string') template.url = cfg.url
+      if (cfg.env !== undefined && typeof cfg.env === 'object') template.env = { ...(cfg.env as Record<string, string>) }
+      if (cfg.headers !== undefined && typeof cfg.headers === 'object') template.headers = { ...(cfg.headers as Record<string, string>) }
+      out.push(template)
+    }
+    // 按 serverName 去重（后出现的覆盖先出现的）。
+    const byName = new Map<string, McpServerTemplate>()
+    for (const t of out) byName.set(t.name, t)
+    return [...byName.values()]
+  }
+
+  /**
+   * 发现（发现与兼容）：从 DSH 组合(cordis.registry)枚举已配置的 mcp-client 插件。
+   * 本插件不创建/配置，只读其配置以呈现"已配置好的 MCP"；用户再把其中想管理的
+   * 加入白名单（管理范围）。env/headers 只揭示存在性，不透出值。
+   */
+  discover(): McpDiscoveredView[] {
+    const managed = new Set(this.cached.map(s => s.name))
+    const actives = new Set<string>()
+    for (const fiber of this.registryFibers()) {
+      if (fiber.name !== '@deepseek-ai/dsh-mcp-client') continue
+      const cfg = (fiber.config ?? {}) as Record<string, unknown>
+      if (typeof cfg.serverName === 'string' && cfg.serverName !== '' && fiber.state === 2) actives.add(cfg.serverName)
+    }
+    return this.discoveredTemplates().map(t => ({
+      name: t.name,
+      transport: t.transport,
+      ...(t.command === undefined ? {} : { command: t.command }),
+      ...(t.args === undefined ? {} : { args: [...t.args] }),
+      ...(t.url === undefined ? {} : { url: t.url }),
+      hasSecrets: (t.env !== undefined && Object.keys(t.env).length > 0) || (t.headers !== undefined && Object.keys(t.headers).length > 0),
+      globallyActive: actives.has(t.name),
+      managed: managed.has(t.name),
+    }))
+  }
+
+  /**
+   * 用户选择（管理范围）：把组合里发现的某个已配置 MCP 复制进白名单（含 env/headers
+   * secrets，不向客户端回显）。返回其脱敏视图供刷新。
+   */
+  select(name: string): { ok: true; entry: McpDiscoveredView } | { ok: false; reason: string } {
+    const template = this.discoveredTemplates().find(t => t.name === name)
+    if (template === undefined) return { ok: false, reason: `组合中未发现已配置的 MCP "${name}"` }
+    const saved = this.upsertTemplate(template)
+    if (!saved.ok) return { ok: false, reason: saved.reason }
+    const hasSecrets = (template.env !== undefined && Object.keys(template.env).length > 0)
+      || (template.headers !== undefined && Object.keys(template.headers).length > 0)
+    const managed = new Set(this.cached.map(s => s.name))
+    return {
+      ok: true,
+      entry: {
+        name: template.name,
+        transport: template.transport,
+        ...(template.command === undefined ? {} : { command: template.command }),
+        ...(template.args === undefined ? {} : { args: [...template.args] }),
+        ...(template.url === undefined ? {} : { url: template.url }),
+        hasSecrets,
+        globallyActive: false,
+        managed: managed.has(template.name),
+      },
+    }
   }
 
   /** 新增或整体替换一条候选（name 相同则覆盖）。 */
@@ -215,7 +324,7 @@ export class SessionMcpManager {
   async connect(
     agent: Agent,
     name: string,
-    signal?: AbortSignal,
+    _signal?: AbortSignal,
   ): Promise<{ ok: true; name: string; serverName: string; alreadyConnected: boolean } | { ok: false; reason: string }> {
     const template = this.cached.find(s => s.name === name)
     if (template === undefined) return { ok: false, reason: `whitelist has no "${name}"` }
@@ -232,7 +341,11 @@ export class SessionMcpManager {
     // apply 是 async（连接+首次工具发现），its Promise 需 await 以等待就绪，
     // 但 Cordis 以 fiber 方式挂载，公认可同步触发；这里通过 fiber 拿到宿主后
     // 再等其连接收敛（mcp-client 内部 effect-scoped，dispose 会断开）。
-    const fiber = agent.ctx.plugin({ name: mcpApply.name, inject: mcpInject, apply: mcpApply } as { name: string; inject: string[]; apply: (ctx: Context, cfg: unknown) => Promise<void> }, config)
+    const fiber = agent.ctx.plugin(
+      { name: mcpApply.name, inject: mcpInject, apply: mcpApply } as
+      { name: string; inject: string[]; apply: (ctx: Context, cfg: unknown) => Promise<void> },
+      config,
+    )
 
     // 主动断开/清理：dispose fiber → mcp-client connection effect 展开 → 断开+注销 tools。
     const dispose = () => { void fiber.dispose() }
@@ -263,6 +376,30 @@ export class SessionMcpManager {
       this.bumpUse(name, -1)
     }
     map.clear()
+  }
+
+  /**
+   * 兼容检查（发现与兼容）：真实连一次该 server，拉工具清单，报工具数；随后自动断开。
+   * 把 mcp-client 默认 failOnStartupError:false 会"静默进重试、无工具也不报错"的坑显式化。
+   */
+  async check(agent: Agent, name: string): Promise<{ ok: true; serverName: string; toolCount: number } | { ok: false; reason: string }> {
+    const template = this.cached.find(s => s.name === name)
+    if (template === undefined) return { ok: false, reason: `白名单没有 "${name}"` }
+    const conn = await this.connect(agent, name)
+    if (!conn.ok) return { ok: false, reason: conn.reason }
+    // 等 mcp-client 异步完成首轮工具发现。
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    let toolCount = 0
+    try {
+      const tools = (agent.ctx.get as (k: string) => unknown).call(agent.ctx, 'tools') as { schemas?: (scope?: unknown) => { name?: string }[] } | undefined
+      const prefix = `mcp__${conn.serverName}__`
+      const schemas = tools?.schemas?.() ?? []
+      toolCount = schemas.filter(s => typeof s?.name === 'string' && s.name.startsWith(prefix)).length
+    } catch {
+      toolCount = 0
+    }
+    this.disconnect(agent, name)
+    return { ok: true, serverName: conn.serverName, toolCount }
   }
 
   /** 白名单模板 → mcp-client Config。 */
