@@ -142,7 +142,14 @@ export function applySessionSkillTools(ctx: Context, config: SessionSkillConfig)
         },
       },
       render: (_args, value) => {
-        const v = value as { introduced: boolean; name: string; origin: string; shadowed?: boolean; alreadyIntroduced?: boolean; persisted?: boolean }
+        const v = value as {
+          introduced: boolean
+          name: string
+          origin: string
+          shadowed?: boolean
+          alreadyIntroduced?: boolean
+          persisted?: boolean
+        }
         if (v.alreadyIntroduced) return [{ type: 'text', text: 'skill "' + v.name + '" is already introduced in this session' }]
         const persist = v.persisted === true ? ' and persisted to ~/.dsh/skills (survives host restarts)' : ' (persistence skipped)'
         const shadow = v.shadowed ? ' (shadows a same-name skill from another layer for this session only)' : ''
