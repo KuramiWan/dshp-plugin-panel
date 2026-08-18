@@ -6,18 +6,12 @@
 
 export interface SkillPanelBrowseEntry {
   readonly name: string
-  readonly origin: 'local' | 'ecosystem'
-  readonly source?: string
   readonly description: string
-  readonly available: boolean
   readonly introduced: boolean
-  /** 不可引入的前置原因（未订阅 / 生态来源未确认），供面板置灰展示；可引入时为 undefined。 */
-  readonly blockReason?: string
 }
 
 export interface SkillPanelBrowseRequest {
   readonly sessionId: string
-  readonly origin?: 'local' | 'ecosystem'
   readonly query?: string
   readonly limit?: number
 }
@@ -48,8 +42,6 @@ export type SkillPanelDetailResult =
   | {
     readonly ok: true
     readonly name: string
-    readonly origin: 'local' | 'ecosystem'
-    readonly source?: string
     readonly description: string
     readonly whenToUse?: string
     readonly content: string
@@ -65,10 +57,9 @@ export type SkillPanelIntroduceResult =
   | {
     readonly ok: true
     readonly name: string
-    readonly origin: string
     readonly shadowed: boolean
     readonly alreadyIntroduced: boolean
-    /** 引入即持久化：是否已复制到 ~/.dsh/skills/<name>/（重启后仍可用）。 */
+    /** 会话引入集是否已记录（落盘 .session-skills/<sessionId>.json，重启后按会话恢复）。 */
     readonly persisted: boolean
   }
   | { readonly ok: false; readonly reason: string }

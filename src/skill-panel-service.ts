@@ -185,11 +185,10 @@ export class SkillPanelService {
     res.end(JSON.stringify(data))
   }
 
-  /** 池浏览（本地 + 已订阅生态 + 未订阅目录），支持来源过滤与关键词。 */
+  /** 池浏览（local 全量），支持关键词过滤。 */
   browse(request: SkillPanelBrowseRequest): SkillPanelBrowseResult {
     const agent = this.agentOf(request.sessionId)
     const items = filterBrowse(browsePool(this.poolRoot, agent, this.store), {
-      origin: request.origin,
       query: request.query,
     })
     const limit = typeof request.limit === 'number' ? Math.max(1, Math.floor(request.limit)) : 100
@@ -210,7 +209,7 @@ export class SkillPanelService {
     }
   }
 
-  /** 单个技能的完整定义（名称/来源/说明/适用场景/正文）。 */
+  /** 单个技能的完整定义（名称/说明/适用场景/正文）。 */
   detail(request: SkillPanelDetailRequest): SkillPanelDetailResult {
     const entry = findPoolEntry(this.poolRoot, request.name)
     if (entry === undefined) return { ok: false, reason: `池中未找到 "${request.name}"` }
@@ -219,15 +218,13 @@ export class SkillPanelService {
     return {
       ok: true,
       name: def.name,
-      origin: entry.origin,
-      ...(entry.source === undefined ? {} : { source: entry.source }),
       description: def.description,
       ...(def.whenToUse === undefined ? {} : { whenToUse: def.whenToUse }),
       content: def.content,
     }
   }
 
-  /** 从池引入到当前会话（幂等；引入即持久化到 ~/.dsh/skills；同名影子覆盖仅本会话）。 */
+  /** 从池引入到当前会话（幂等；纯会话注册，会话引入集已记录；同名影子覆盖仅本会话）。 */
   async introduce(request: SkillPanelIntroduceRequest): Promise<SkillPanelIntroduceResult> {
     const agent = this.agentOf(request.sessionId)
     const result = await introduceSkill(this.ctx, this.poolRoot, this.store, agent, request.name)
@@ -235,7 +232,6 @@ export class SkillPanelService {
     return {
       ok: true,
       name: result.name,
-      origin: result.origin,
       shadowed: result.shadowed,
       alreadyIntroduced: result.alreadyIntroduced,
       persisted: result.persisted,

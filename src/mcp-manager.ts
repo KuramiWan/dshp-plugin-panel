@@ -93,7 +93,6 @@ const SERVER_NAME_PREFIX = 'dshp'
 export class SessionMcpManager {
   private readonly context: Context
   /** 白名单存储目录（poolRoot）。 */
-  private readonly root: string
   private readonly whitelistFile: string
   /** agent → (whitelistName → Connection)。 */
   private readonly connections = new WeakMap<Agent, Map<string, Connection>>()
@@ -112,7 +111,6 @@ export class SessionMcpManager {
 
   constructor(ctx: Context, root: string) {
     this.context = ctx
-    this.root = root
     this.whitelistFile = join(root, WHITELIST_FILE)
     this.cached = this.readFile()
   }

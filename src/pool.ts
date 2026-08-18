@@ -1,6 +1,7 @@
 /**
  * DSHP 池读取层（DSHP src/pool.ts 的可运行副本；规范源在 DSHP，本副本供 checkout 插件构建）。
- * 目录扫描 / SKILL.md frontmatter 解析 / 信任校验；与 scripts/ecosystem-catalog.ps1 约定一致。
+ * 目录扫描 / SKILL.md frontmatter 解析。池 = 用户自管的唯一内容源：`local/` 下每个目录
+ * 即一份技能（放文件 = 加入管理），无订阅/生态/目录缓存/信任概念。
  * 注意：Node 26 的 V8 不接受 (?m) 内联标志——逐行匹配，无内联标志。
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
@@ -13,11 +14,7 @@ export interface PoolEntry {
   readonly whenToUse?: string
   readonly modelInvocable: boolean
   readonly userInvocable: boolean
-  readonly origin: 'local' | 'ecosystem'
-  readonly source?: string
   readonly directory: string
-  readonly available: boolean
-  readonly trusted: boolean
 }
 
 export interface SkillContent {
@@ -73,17 +70,6 @@ export function resolvePoolRoot(poolRoot: string | undefined, env: EnvLike = pro
   return poolRoot ?? defaultPoolRoot(env)
 }
 
-/**
- * user-dsh 技能根（默认 ~/.dsh/skills）：skill-filesystem 启动时扫描的持久层。
- * 引入即持久化：introduce 把技能目录复制到这里，宿主重启后仍可用。
- * 解析优先级与 defaultPoolRoot 一致（$DSH_HOME > ~/.dsh），再拼 skills 子目录。
- */
-export function defaultUserSkillsRoot(env: EnvLike = process.env): string {
-  const fromEnv = env.DSH_HOME?.trim()
-  const home = fromEnv || join(homedir(), '.dsh')
-  return join(home, 'skills')
-}
-
 export function isValidSkillName(name: string): boolean {
   return NAME_PATTERN.test(name)
 }
@@ -136,135 +122,42 @@ export function parseSkillFile(raw: string): { fm: Frontmatter; body: string } |
   return { fm, body }
 }
 
-function readTrust(poolRoot: string): Array<{ repo?: string; commit?: string; name?: string }> {
-  const path = join(poolRoot, '.trust.json')
-  if (!existsSync(path)) return []
-  const text = readText(path)
-  if (text === undefined) return []
-  try {
-    const data = JSON.parse(text) as { confirmed?: unknown }
-    const confirmed = data?.confirmed
-    return Array.isArray(confirmed) ? confirmed as Array<{ repo?: string; commit?: string; name?: string }> : []
-  } catch {
-    return []
-  }
-}
-
-function readCatalogSources(poolRoot: string): Record<string, { repo?: string; ref?: string; commit?: string }> {
-  const path = join(poolRoot, '.catalog.json')
-  if (!existsSync(path)) return {}
-  const text = readText(path)
-  if (text === undefined) return {}
-  try {
-    const data = JSON.parse(text) as { sources?: Record<string, { repo?: string; ref?: string; commit?: string }> }
-    return data?.sources ?? {}
-  } catch {
-    return {}
-  }
-}
-
-function trustedFor(poolRoot: string, entry: PoolEntry): boolean {
-  if (entry.origin !== 'ecosystem' || entry.source === undefined) return true
-  const sources = readCatalogSources(poolRoot)
-  const repo = sources[entry.source]?.repo
-  const confirmed = readTrust(poolRoot)
-  return confirmed.some(c => c.name === entry.name && (repo === undefined || c.repo === repo))
-}
-
-function parseDir(poolRoot: string, dir: string, _name: string, origin: 'local' | 'ecosystem', source?: string): PoolEntry | undefined {
+function parseDir(dir: string): PoolEntry | undefined {
   const skillPath = join(dir, 'SKILL.md')
   if (!existsSync(skillPath)) return undefined
   const raw = readText(skillPath)
   if (raw === undefined) return undefined
   const parsed = parseSkillFile(raw)
   if (parsed === undefined || parsed.fm.name === undefined || parsed.fm.description === undefined) return undefined
-  const base: Omit<PoolEntry, 'trusted'> = {
+  return {
     name: parsed.fm.name,
     description: parsed.fm.description,
     ...(parsed.fm.whenToUse === undefined ? {} : { whenToUse: parsed.fm.whenToUse }),
     modelInvocable: parsed.fm.disableModel !== true,
     userInvocable: parsed.fm.userInvocable !== false,
-    origin,
-    ...(source === undefined ? {} : { source }),
     directory: dir,
-    available: true,
   }
-  return { ...base, trusted: trustedFor(poolRoot, base as PoolEntry) }
 }
 
-/** 扫描本地池与已订阅生态目录（磁盘真相）。 */
+/** 扫描本地池（磁盘真相）：`local/` 下每个含 SKILL.md 的目录即一份技能。 */
 export function listPoolEntries(poolRoot: string): PoolEntry[] {
   const entries: PoolEntry[] = []
   const localRoot = join(poolRoot, 'local')
   if (existsSync(localRoot)) {
     for (const dirent of readdirSync(localRoot, { withFileTypes: true })) {
       if (!dirent.isDirectory()) continue
-      const parsed = parseDir(poolRoot, join(localRoot, dirent.name), dirent.name, 'local')
+      const parsed = parseDir(join(localRoot, dirent.name))
       if (parsed !== undefined) entries.push(parsed)
-    }
-  }
-  const ecoRoot = join(poolRoot, 'ecosystem')
-  if (existsSync(ecoRoot)) {
-    for (const source of readdirSync(ecoRoot, { withFileTypes: true })) {
-      if (!source.isDirectory()) continue
-      const sourceRoot = join(ecoRoot, source.name)
-      for (const dirent of readdirSync(sourceRoot, { withFileTypes: true })) {
-        if (!dirent.isDirectory()) continue
-        const parsed = parseDir(poolRoot, join(sourceRoot, dirent.name), dirent.name, 'ecosystem', source.name)
-        if (parsed !== undefined) entries.push(parsed)
-      }
     }
   }
   return entries
 }
 
-/** 生态目录（.catalog.json）中尚未订阅的条目：available=false。 */
-export function listUnsubscribedCatalogEntries(poolRoot: string): PoolEntry[] {
-  const path = join(poolRoot, '.catalog.json')
-  if (!existsSync(path)) return []
-  const text = readText(path)
-  if (text === undefined) return []
-  try {
-    const data = JSON.parse(text) as {
-      entries?: Array<{
-        name?: string
-        description?: string
-        source?: { id?: string }
-      }>
-    }
-    const entries = data?.entries ?? []
-    const onDisk = new Set(listPoolEntries(poolRoot).map(e => e.source + '/' + e.name))
-    const result: PoolEntry[] = []
-    for (const raw of entries) {
-      if (raw.name === undefined || raw.description === undefined) continue
-      if (onDisk.has(raw.source?.id + '/' + raw.name)) continue
-      result.push({
-        name: raw.name,
-        description: raw.description,
-        modelInvocable: true,
-        userInvocable: true,
-        origin: 'ecosystem',
-        ...(raw.source?.id === undefined ? {} : { source: raw.source.id }),
-        directory: '',
-        available: false,
-        trusted: false,
-      })
-    }
-    return result
-  } catch {
-    return []
-  }
-}
-
 export function findPoolEntry(poolRoot: string, name: string): PoolEntry | undefined {
-  const all = [...listPoolEntries(poolRoot), ...listUnsubscribedCatalogEntries(poolRoot)]
-  const local = all.find(e => e.origin === 'local' && e.name === name)
-  if (local !== undefined) return local
-  return all.find(e => e.origin === 'ecosystem' && e.name === name)
+  return listPoolEntries(poolRoot).find(e => e.name === name)
 }
 
 export function readSkillContent(entry: PoolEntry): SkillContent | undefined {
-  if (!entry.available || entry.directory === '') return undefined
   const skillPath = join(entry.directory, 'SKILL.md')
   if (!existsSync(skillPath)) return undefined
   const raw = readText(skillPath)

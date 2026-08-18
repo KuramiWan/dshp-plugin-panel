@@ -3,11 +3,14 @@
  * - 5 个 session_skill_* 模型工具（模型自主调用）+ 5 个 /skill-* 斜杠命令（人类直接调用）；
  * - SkillPanelService（webServer HTTP 路由，5 方法）供浏览器面板消费——三面共享同一
  *   SessionSkillStore（按 agent+name 跟踪 disposer，幂等语义）与 pool.ts 只读层；
+ * - 会话引入集持久化：引入/移除落盘 <poolRoot>/.session-skills/<sessionId>.json，
+ *   宿主重启后订阅 agent/session-start（source==='resume'）自动重放（§3.2）；
  * - 注册走插件 ctx（ctx.effect / ctx.plugin），随插件实例生命周期回收——避免重复注册。
- * 数据源：池目录（默认 ~/.dsh/.skill-pool）。
+ * 数据源：池目录（默认 ~/.dsh/.skill-pool，用户自管的唯一内容源）。
  */
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import type { Agent, SessionStartSource } from '@deepseek-ai/dsh-agent'
 import { applySessionSkillTools } from './tools.ts'
 import { applySessionSkillCommands } from './commands.ts'
 import { applySessionMcpTools } from './mcp-tools.ts'
@@ -15,6 +18,7 @@ import { SkillPanelService } from './skill-panel-service.ts'
 import { SessionMcpManager } from './mcp-manager.ts'
 import { resolvePoolRoot } from './pool.ts'
 import { SessionSkillStore } from './handles.ts'
+import { replaySession } from './actions.ts'
 
 export type {
   SkillPanelBrowseEntry,
@@ -65,15 +69,22 @@ export class SkillControlPlugin {
     poolRoot: z.string(),
   })
 
-  private readonly store = new SessionSkillStore()
+  private readonly store: SessionSkillStore
   private readonly mcp: SessionMcpManager
 
   constructor(ctx: Context, config: SkillControlConfig = {}) {
     const poolRoot = resolvePoolRoot(config.poolRoot)
+    this.store = new SessionSkillStore(poolRoot)
     this.mcp = new SessionMcpManager(ctx, poolRoot)
     applySessionSkillTools(ctx, { poolRoot, store: this.store })
     applySessionSkillCommands(ctx, { poolRoot, store: this.store })
     applySessionMcpTools(ctx, { manager: this.mcp })
+    // 会话引入集重放（§3.2）：resume 的唯一一等信号是 agent/session-start.source==='resume'，
+    // 事件同步触发于 publish、携带新 Agent；fire-and-forget 异步重放，store 幂等。
+    ctx.effect(() => ctx.on('agent/session-start', (payload: { agent: Agent; source: SessionStartSource }) => {
+      if (payload.source !== 'resume') return
+      void replaySession(ctx, poolRoot, this.store, payload.agent)
+    }), 'skill-panel: session introduce-set replay')
     ctx.plugin(SkillPanelService, { poolRoot, store: this.store, mcp: this.mcp })
   }
 }
