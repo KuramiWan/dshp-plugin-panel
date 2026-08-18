@@ -1,8 +1,9 @@
 import { defineConfig } from 'tsdown'
-// 发布方案一：host 侧已改为 webServer HTTP 路由（skill-panel-service.ts），
-// 不再生成 typert 桩，故去掉 typertPlugin，改为纯 ESM 打包 lib/types/index.js。
+// 发布方案一：host 侧为 webServer HTTP 路由（skill-panel-service.ts），无 typert。
+// 直接从 src 打包（rolldown 转译、不做 tsc 类型检查、不依赖预生成 lib/types），
+// 避免 monorepo 复合项目的 rootDir 报错；产物 lib/index.js 即为运行期 host 代码。
 export default defineConfig({
-  entry: ['lib/types/index.js'],
+  entry: ['src/index.ts'],
   outDir: 'lib',
   format: ['esm'],
   platform: 'node',

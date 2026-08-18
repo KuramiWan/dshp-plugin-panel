@@ -43,7 +43,10 @@ export interface SkillPanelServiceOptions {
 
 /** 面板 host 服务：只读为主；写操作与命令/工具同路径。 */
 export class SkillPanelService {
-  static inject = ['agents', 'skills']
+  // webServer 是 host 侧就绪较晚的服务：放进 inject 让 Cordis 等它就绪后再构造本服务，
+  // 保证 /skill-panel 路由必然注册。切勿改成可选 ctx.get('webServer') + 空则 return ——
+  // 那会让路由在首帧静默跳过，/skill-panel/<method> 命中 frontend-static 回退而 405。
+  static inject = ['agents', 'skills', 'webServer']
 
   private readonly ctx: Context
   private readonly poolRoot: string
@@ -54,9 +57,7 @@ export class SkillPanelService {
     this.poolRoot = options.poolRoot
     this.store = options.store
 
-    const webServer = ctx.get('webServer')
-    if (webServer === undefined) return
-    ctx.effect(() => webServer.register({
+    ctx.effect(() => ctx.webServer.register({
       kind: 'prefix',
       path: '/skill-panel',
       handler: (req: IncomingMessage, res: ServerResponse) => void this.dispatch(req, res),
