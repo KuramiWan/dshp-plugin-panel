@@ -137,7 +137,8 @@ export type SetTagsResult =
 
 /**
  * 打 tag（2026-08-19，跨池共享分组）：写技能 SKILL.md frontmatter 的 `tags` 字段。
- * 技能在池 local/ 或全局层（~/.dsh/skills）均可；只改 tags 行，其余内容逐字保留。
+ * 技能在池 local/ 或全局层（~/.dsh/skills）均可——先查可用池，未找到再查全局激活池；
+ * 只改 tags 行，其余内容逐字保留。
  * 分组是技能自身元数据，移动到任何一层 tag 都跟着——三池（全局激活/可用池/会话引入）共享。
  */
 export function setSkillTags(poolRoot: string, name: string, tags: readonly string[]): SetTagsResult {
@@ -145,9 +146,11 @@ export function setSkillTags(poolRoot: string, name: string, tags: readonly stri
   for (const tag of tags) {
     if (!isValidTagName(tag)) return { ok: false, reason: `非法 tag "${tag}"` }
   }
-  const entry = findPoolEntry(poolRoot, name)
-  if (entry === undefined) return { ok: false, reason: `可用池中未找到 "${name}"` }
-  const result = writeSkillTags(entry.directory, tags)
+  const poolEntry = findPoolEntry(poolRoot, name)
+  const directory = poolEntry?.directory
+    ?? listGlobalEntries(defaultGlobalSkillsRoot()).find(e => e.name === name)?.directory
+  if (directory === undefined) return { ok: false, reason: `未找到 "${name}"（可用池与全局激活池均无）` }
+  const result = writeSkillTags(directory, tags)
   if (!result.ok) return { ok: false, reason: result.reason }
   return { ok: true, name, tags }
 }
