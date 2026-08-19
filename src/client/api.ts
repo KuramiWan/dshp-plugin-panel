@@ -23,6 +23,10 @@ import type {
   SkillPanelRemoveResult,
   SkillPanelMoveRequest,
   SkillPanelMoveResult,
+  SkillPanelGlobalListRequest,
+  SkillPanelGlobalListResult,
+  SkillPanelGlobalActivateRequest,
+  SkillPanelGlobalActivateResult,
   SkillPanelMcpListRequest,
   SkillPanelMcpListResult,
   SkillPanelMcpConnectRequest,
@@ -54,6 +58,9 @@ export interface SkillPanelClient {
   introduce(request: SkillPanelIntroduceRequest): Promise<SkillPanelIntroduceResult>
   removeSkill(request: SkillPanelRemoveRequest): Promise<SkillPanelRemoveResult>
   moveSkill(request: SkillPanelMoveRequest): Promise<SkillPanelMoveResult>
+  globalList(request: SkillPanelGlobalListRequest): Promise<SkillPanelGlobalListResult>
+  globalActivate(request: SkillPanelGlobalActivateRequest): Promise<SkillPanelGlobalActivateResult>
+  globalDeactivate(request: SkillPanelGlobalActivateRequest): Promise<SkillPanelGlobalActivateResult>
   mcpList(request: SkillPanelMcpListRequest): Promise<SkillPanelMcpListResult>
   mcpConnect(request: SkillPanelMcpConnectRequest): Promise<SkillPanelMcpConnectResult>
   mcpDisconnect(request: SkillPanelMcpDisconnectRequest): Promise<SkillPanelMcpDisconnectResult>
@@ -121,6 +128,21 @@ export function createSkillPanelClient(): SkillPanelClient {
         return (await post('moveSkill', request)) as SkillPanelMoveResult
       } catch (error) {
         return foldFail<SkillPanelMoveResult>(error)
+      }
+    },
+    globalList: request => post('globalList', request) as Promise<SkillPanelGlobalListResult>,
+    globalActivate: async (request) => {
+      try {
+        return (await post('globalActivate', request)) as SkillPanelGlobalActivateResult
+      } catch (error) {
+        return foldFail<SkillPanelGlobalActivateResult>(error)
+      }
+    },
+    globalDeactivate: async (request) => {
+      try {
+        return (await post('globalDeactivate', request)) as SkillPanelGlobalActivateResult
+      } catch (error) {
+        return foldFail<SkillPanelGlobalActivateResult>(error)
       }
     },
     mcpList: request => post('mcpList', request) as Promise<SkillPanelMcpListResult>,

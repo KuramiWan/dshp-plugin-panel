@@ -17,8 +17,16 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { findPoolEntry, readSkillContent } from './pool.ts'
-import { browsePool, introduceSkill, removeSkill, moveSkill, filterBrowse } from './actions.ts'
+import { findPoolEntry, readSkillContent, defaultGlobalSkillsRoot, listGlobalEntries } from './pool.ts'
+import {
+  browsePool,
+  introduceSkill,
+  removeSkill,
+  moveSkill,
+  activateGlobal,
+  deactivateGlobal,
+  filterBrowse,
+} from './actions.ts'
 import type { SessionSkillStore } from './handles.ts'
 import type { SessionMcpManager, McpServerTemplate } from './mcp-manager.ts'
 import type {
@@ -35,6 +43,10 @@ import type {
   SkillPanelRemoveResult,
   SkillPanelMoveRequest,
   SkillPanelMoveResult,
+  SkillPanelGlobalListRequest,
+  SkillPanelGlobalListResult,
+  SkillPanelGlobalActivateRequest,
+  SkillPanelGlobalActivateResult,
   SkillPanelMcpListRequest,
   SkillPanelMcpListResult,
   SkillPanelMcpConnectRequest,
@@ -132,6 +144,15 @@ export class SkillPanelService {
           break
         case 'moveSkill':
           result = this.moveSkill(payload as unknown as SkillPanelMoveRequest)
+          break
+        case 'globalList':
+          result = this.globalList(payload as unknown as SkillPanelGlobalListRequest)
+          break
+        case 'globalActivate':
+          result = this.globalActivate(payload as unknown as SkillPanelGlobalActivateRequest)
+          break
+        case 'globalDeactivate':
+          result = this.globalDeactivate(payload as unknown as SkillPanelGlobalActivateRequest)
           break
         case 'mcpList':
           result = this.mcpList(payload as unknown as SkillPanelMcpListRequest)
@@ -257,6 +278,29 @@ export class SkillPanelService {
     const result = moveSkill(this.poolRoot, request.name, request.group)
     if (!result.ok) return { ok: false, reason: result.reason }
     return { ok: true, name: result.name, ...(result.group === undefined ? {} : { group: result.group }) }
+  }
+
+  /** 全局激活池（user-dsh 层）清单：进程级自动可见的技能。 */
+  globalList(request: SkillPanelGlobalListRequest): SkillPanelGlobalListResult {
+    this.agentOf(request.sessionId)
+    const root = defaultGlobalSkillsRoot()
+    return { entries: listGlobalEntries(root).map(e => ({ name: e.name, description: e.description })) }
+  }
+
+  /** 启用：可用池 → 全局激活池（user-dsh 层，进程级自动可见）。 */
+  globalActivate(request: SkillPanelGlobalActivateRequest): SkillPanelGlobalActivateResult {
+    this.agentOf(request.sessionId)
+    const result = activateGlobal(this.poolRoot, request.name)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true, name: result.name, target: 'global' }
+  }
+
+  /** 停用：全局激活池 → 可用池 local/（不再进程级自动可见，内容保留）。 */
+  globalDeactivate(request: SkillPanelGlobalActivateRequest): SkillPanelGlobalActivateResult {
+    this.agentOf(request.sessionId)
+    const result = deactivateGlobal(this.poolRoot, request.name)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true, name: result.name, target: 'pool' }
   }
 
   /** 会话 MCP：当前会话已连 server + 白名单候选视图。 */

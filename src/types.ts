@@ -86,6 +86,31 @@ export type SkillPanelMoveResult =
   | { readonly ok: true; readonly name: string; readonly group?: string }
   | { readonly ok: false; readonly reason: string }
 
+// ---- 全局激活池（user-dsh 层，进程级自动可见）管理 ----
+
+/** 全局激活池条目视图。 */
+export interface SkillPanelGlobalEntry {
+  readonly name: string
+  readonly description: string
+}
+
+export interface SkillPanelGlobalListRequest {
+  readonly sessionId: string
+}
+
+export interface SkillPanelGlobalListResult {
+  readonly entries: readonly SkillPanelGlobalEntry[]
+}
+
+export interface SkillPanelGlobalActivateRequest {
+  readonly sessionId: string
+  readonly name: string
+}
+
+export type SkillPanelGlobalActivateResult =
+  | { readonly ok: true; readonly name: string; readonly target: 'global' | 'pool' }
+  | { readonly ok: false; readonly reason: string }
+
 // ---- 面板 MCP 管理边界载荷（会话级临时 MCP，7b 面板入口） ----
 
 export interface SkillPanelMcpEntry {

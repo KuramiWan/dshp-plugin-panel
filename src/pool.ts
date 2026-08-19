@@ -75,6 +75,41 @@ export function resolvePoolRoot(poolRoot: string | undefined, env: EnvLike = pro
   return poolRoot ?? defaultPoolRoot(env)
 }
 
+/**
+ * user-dsh 全局技能根（默认 ~/.dsh/skills，$DSH_HOME 优先）：DSH 官方 skill-filesystem
+ * 启动时扫描的进程级层，所有会话自动可见。本插件把它作为「全局激活池」——可管理
+ * （启用/停用 = 与池 local/ 之间移动目录），但默认只扫描展示、不动现有内容。
+ */
+export function defaultGlobalSkillsRoot(env: EnvLike = process.env): string {
+  const fromEnv = env.DSH_HOME?.trim()
+  const home = fromEnv || join(homedir(), '.dsh')
+  return join(home, 'skills')
+}
+
+/**
+ * 扫描 user-dsh 全局激活池（磁盘真相）：`~/.dsh/skills/` 下每个含 SKILL.md 的目录。
+ * 不递归（官方层无分组语义）；目录名即技能名（无 frontmatter 也返回，靠目录名兜底）。
+ */
+export function listGlobalEntries(root: string): Array<{ readonly name: string; readonly description: string; readonly directory: string }> {
+  const entries: Array<{ name: string; description: string; directory: string }> = []
+  if (!existsSync(root)) return entries
+  for (const dirent of readdirSync(root, { withFileTypes: true })) {
+    if (!dirent.isDirectory()) continue
+    const dir = join(root, dirent.name)
+    const skillPath = join(dir, 'SKILL.md')
+    if (!existsSync(skillPath)) continue
+    const raw = readText(skillPath)
+    const parsed = raw === undefined ? undefined : parseSkillFile(raw)
+    const name = parsed?.fm.name ?? dirent.name
+    entries.push({
+      name,
+      description: parsed?.fm.description ?? '(无 frontmatter 描述)',
+      directory: dir,
+    })
+  }
+  return entries
+}
+
 export function isValidSkillName(name: string): boolean {
   return NAME_PATTERN.test(name)
 }

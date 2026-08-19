@@ -11,9 +11,11 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { existsSync, mkdirSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  defaultGlobalSkillsRoot,
   findPoolEntry,
   isValidSkillName,
   isValidGroupName,
+  listGlobalEntries,
   listPoolEntries,
   readSkillContent,
 } from './pool.ts'
@@ -158,4 +160,53 @@ export function moveSkill(poolRoot: string, name: string, group?: string): MoveS
     return { ok: false, reason: `移动失败：${error instanceof Error ? error.message : String(error)}` }
   }
   return { ok: true, name, ...(group === undefined || group === '' ? {} : { group }) }
+}
+
+// ---- 全局激活池（user-dsh 层，进程级自动可见）与可用池（local/）之间的流转 ----
+
+export type GlobalActivateResult =
+  | { readonly ok: true; readonly name: string; readonly target: 'global' | 'pool' }
+  | { readonly ok: false; readonly reason: string }
+
+/**
+ * 启用：把池内技能（可用池）移动到 user-dsh 全局层（~/.dsh/skills/<name>），
+ * 使其进程级自动可见（全局激活池）。只移动目录（rename），不复制。
+ * 已在全局同名 → 拒绝（避免覆盖官方/现有内容）；目标为 global。
+ */
+export function activateGlobal(poolRoot: string, name: string, env: NodeJS.ProcessEnv = process.env): GlobalActivateResult {
+  if (!isValidSkillName(name)) return { ok: false, reason: `非法技能名 "${name}"` }
+  const entry = findPoolEntry(poolRoot, name)
+  if (entry === undefined) return { ok: false, reason: `可用池中未找到 "${name}"` }
+  const globalRoot = defaultGlobalSkillsRoot(env)
+  const target = join(globalRoot, name)
+  if (existsSync(target)) return { ok: false, reason: `全局已存在 "${name}"（停用/删除后重试）` }
+  try {
+    mkdirSync(globalRoot, { recursive: true })
+    renameSync(entry.directory, target)
+  } catch (error) {
+    return { ok: false, reason: `启用失败：${error instanceof Error ? error.message : String(error)}` }
+  }
+  return { ok: true, name, target: 'global' }
+}
+
+/**
+ * 停用：把 user-dsh 全局层技能（全局激活池）移动到池 local/ 顶层（可用池），
+ * 使其不再进程级自动可见。只移动目录（rename），不复制、不删除内容。
+ * 池内同名 → 拒绝；目标为 pool。
+ */
+export function deactivateGlobal(poolRoot: string, name: string, env: NodeJS.ProcessEnv = process.env): GlobalActivateResult {
+  if (!isValidSkillName(name)) return { ok: false, reason: `非法技能名 "${name}"` }
+  const globalRoot = defaultGlobalSkillsRoot(env)
+  const globalEntry = listGlobalEntries(globalRoot).find(e => e.name === name)
+  if (globalEntry === undefined) return { ok: false, reason: `全局激活池中未找到 "${name}"` }
+  const localRoot = join(poolRoot, 'local')
+  const target = join(localRoot, name)
+  if (existsSync(target)) return { ok: false, reason: `可用池已存在 "${name}"（启用/删除后重试）` }
+  try {
+    mkdirSync(localRoot, { recursive: true })
+    renameSync(globalEntry.directory, target)
+  } catch (error) {
+    return { ok: false, reason: `停用失败：${error instanceof Error ? error.message : String(error)}` }
+  }
+  return { ok: true, name, target: 'pool' }
 }

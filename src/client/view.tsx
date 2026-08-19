@@ -1,8 +1,10 @@
 /**
- * 技能面板共享视图：两区布局（对齐 MCP 页签「发现 + 已管理」）——
- * 「池（用户自管内容：引入 / 详情）」+「本会话已引入（移除）」。
- * 池 = local 全量，按分组折叠展示（local/<group>/<skill>/ 归组，顶层技能归「未分组」）；
- * 分组只影响展示，不影响引入的会话语义；引入集持久，重启后自动恢复。
+ * 技能面板共享视图：三区布局——
+ * 「全局激活（user-dsh 层，进程级自动可见：停用 / 详情）」+
+ * 「可用池（用户自管内容：启用 / 引入 / 分组 / 详情）」+「本会话已引入（移除）」。
+ * 全局激活池 = ~/.dsh/skills（DSH skill-filesystem 扫描，所有会话自动可见）；
+ * 可用池 = local/ 按分组折叠展示（local/<group>/<skill>/ 归组，顶层归「未分组」）。
+ * 启用/停用 = 在两区之间移动目录（不复制、不删除内容）；分组只影响展示。
  * 数据走 HTTP 客户端（api.ts，相对路径 fetch）。
  */
 import { useEffect, useMemo, useState } from 'react'
@@ -21,6 +23,11 @@ export interface SkillPanelIntroducedSkill {
   description?: string
 }
 
+export interface SkillPanelGlobalEntry {
+  name: string
+  description: string
+}
+
 export interface SkillPanelViewProps {
   sessionId: string
   client: SkillPanelClient | undefined
@@ -37,6 +44,7 @@ function groupKey(entry: SkillPanelBrowseEntry): string {
 export function SkillPanelView(props: SkillPanelViewProps) {
   const { sessionId, client, t } = props
   const [entries, setEntries] = useState<SkillPanelBrowseEntry[] | null>(null)
+  const [globals, setGlobals] = useState<SkillPanelGlobalEntry[] | null>(null)
   const [introduced, setIntroduced] = useState<SkillPanelIntroducedSkill[] | null>(null)
   const [query, setQuery] = useState('')
   const [error, setError] = useState(false)
@@ -60,6 +68,7 @@ export function SkillPanelView(props: SkillPanelViewProps) {
         ...(query.trim().length === 0 ? {} : { query: query.trim() }),
         limit: 200,
       }).then(r => setEntries([...(r.entries ?? [])])),
+      client.globalList({ sessionId }).then(r => setGlobals([...(r.entries ?? [])])),
       client.list({ sessionId }).then(r => setIntroduced([...(r.skills ?? [])])),
     ]).then(() => {
       setBusy(false)
@@ -74,6 +83,7 @@ export function SkillPanelView(props: SkillPanelViewProps) {
   }, [sessionId, query])
 
   const visible = useMemo(() => entries ?? [], [entries])
+  const globalsList = useMemo(() => globals ?? [], [globals])
   const introducedList = useMemo(() => introduced ?? [], [introduced])
 
   /** 按分组键排序后的 [group, entries[]] 列表（组间按组名，组内按技能名）。 */
@@ -180,6 +190,34 @@ export function SkillPanelView(props: SkillPanelViewProps) {
     })
   }
 
+  /** 启用：可用池 → 全局激活池。 */
+  const runActivate = (name: string): void => {
+    if (busy || client === undefined) return
+    setBusy(true)
+    void client.globalActivate({ sessionId, name }).then((result) => {
+      setBusy(false)
+      setNotice(result.ok ? { kind: 'ok', text: `${t('notice.activated')}: ${result.name}` } : { kind: 'error', text: `${t('notice.failed')}: ${result.reason}` })
+      refresh()
+    }).catch(() => {
+      setBusy(false)
+      setNotice({ kind: 'error', text: t('notice.failed') })
+    })
+  }
+
+  /** 停用：全局激活池 → 可用池。 */
+  const runDeactivate = (name: string): void => {
+    if (busy || client === undefined) return
+    setBusy(true)
+    void client.globalDeactivate({ sessionId, name }).then((result) => {
+      setBusy(false)
+      setNotice(result.ok ? { kind: 'ok', text: `${t('notice.deactivated')}: ${result.name}` } : { kind: 'error', text: `${t('notice.failed')}: ${result.reason}` })
+      refresh()
+    }).catch(() => {
+      setBusy(false)
+      setNotice({ kind: 'error', text: t('notice.failed') })
+    })
+  }
+
   const toggleDetail = (name: string): void => {
     if (client === undefined) return
     if (openDetail === name) {
@@ -215,6 +253,28 @@ export function SkillPanelView(props: SkillPanelViewProps) {
         </div>
       ) : (
         <>
+          <div className="dshp-section-title">{t('global.title')}</div>
+          {busy && globals === null ? (
+            <div className="dshp-empty">{t('loading')}</div>
+          ) : globalsList.length === 0 ? (
+            <div className="dshp-empty">{t('global.empty')}</div>
+          ) : (
+            <div className="dshp-list">
+              {globalsList.map(g => (
+                <div className="dshp-item" key={g.name}>
+                  <div className="dshp-item-head">
+                    <span className="dshp-name">{g.name}</span>
+                    <span className="dshp-tag dshp-tag-intro">{t('global.active')}</span>
+                    <span className="dshp-actions">
+                      <button className="dshp-btn dshp-btn-danger" onClick={() => runDeactivate(g.name)}>{t('action.deactivate')}</button>
+                    </span>
+                  </div>
+                  <div className="dshp-desc">{g.description}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="dshp-section-title">{t('pool.title')}</div>
           {busy && entries === null ? (
             <div className="dshp-empty">{t('loading')}</div>
@@ -241,6 +301,7 @@ export function SkillPanelView(props: SkillPanelViewProps) {
                             {entry.introduced
                               ? null
                               : <button className="dshp-btn dshp-btn-primary" onClick={() => runIntroduce(entry.name)}>{t('action.introduce')}</button>}
+                            <button className="dshp-btn" onClick={() => runActivate(entry.name)}>{t('action.activate')}</button>
                             <button className="dshp-btn" onClick={() => toggleDetail(entry.name)}>
                               {openDetail === entry.name ? t('action.collapse') : t('action.detail')}
                             </button>
