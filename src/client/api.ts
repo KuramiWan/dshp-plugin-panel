@@ -21,8 +21,8 @@ import type {
   SkillPanelIntroduceResult,
   SkillPanelRemoveRequest,
   SkillPanelRemoveResult,
-  SkillPanelMoveRequest,
-  SkillPanelMoveResult,
+  SkillPanelSetTagsRequest,
+  SkillPanelSetTagsResult,
   SkillPanelGlobalListRequest,
   SkillPanelGlobalListResult,
   SkillPanelGlobalActivateRequest,
@@ -57,7 +57,7 @@ export interface SkillPanelClient {
   detail(request: SkillPanelDetailRequest): Promise<SkillPanelDetailResult>
   introduce(request: SkillPanelIntroduceRequest): Promise<SkillPanelIntroduceResult>
   removeSkill(request: SkillPanelRemoveRequest): Promise<SkillPanelRemoveResult>
-  moveSkill(request: SkillPanelMoveRequest): Promise<SkillPanelMoveResult>
+  setTags(request: SkillPanelSetTagsRequest): Promise<SkillPanelSetTagsResult>
   globalList(request: SkillPanelGlobalListRequest): Promise<SkillPanelGlobalListResult>
   globalActivate(request: SkillPanelGlobalActivateRequest): Promise<SkillPanelGlobalActivateResult>
   globalDeactivate(request: SkillPanelGlobalActivateRequest): Promise<SkillPanelGlobalActivateResult>
@@ -123,11 +123,11 @@ export function createSkillPanelClient(): SkillPanelClient {
         return foldFail<SkillPanelRemoveResult>(error)
       }
     },
-    moveSkill: async (request) => {
+    setTags: async (request) => {
       try {
-        return (await post('moveSkill', request)) as SkillPanelMoveResult
+        return (await post('setTags', request)) as SkillPanelSetTagsResult
       } catch (error) {
-        return foldFail<SkillPanelMoveResult>(error)
+        return foldFail<SkillPanelSetTagsResult>(error)
       }
     },
     globalList: request => post('globalList', request) as Promise<SkillPanelGlobalListResult>,

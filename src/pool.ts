@@ -2,11 +2,11 @@
  * DSHP 池读取层（规范源 standalone src/pool.ts；DSHP 的 plugin/dshp-skill-panel/src 为只读镜像）。
  * 目录扫描 / SKILL.md frontmatter 解析。池 = 用户自管的唯一内容源：`local/` 下每个含 SKILL.md
  * 的目录即一份技能（放文件 = 加入管理），无订阅/生态/目录缓存/信任概念。
- * 分组（2026-08-19）：`local/` 下不含 SKILL.md 的子目录视为分组，其下技能目录归该组；
- * `local/<skill>/` 顶层技能无分组。分组只影响展示/过滤，不影响引入的会话语义。
+ * 分组（2026-08-19）：统一用技能自身 frontmatter 的 `tags` 字段，三池（全局激活 / 可用池 /
+ * 会话引入）共享；目录结构只作存放位置（兼容 `local/<group>/<skill>/` 旧布局，但不作分组展示）。
  * 注意：Node 26 的 V8 不接受 (?m) 内联标志——逐行匹配，无内联标志。
  */
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
@@ -17,8 +17,8 @@ export interface PoolEntry {
   readonly modelInvocable: boolean
   readonly userInvocable: boolean
   readonly directory: string
-  /** 分组名（local/<group>/<skill>/ 时存在）；顶层技能无分组。 */
-  readonly group?: string
+  /** frontmatter tags（跨池共享的分组维度）。 */
+  readonly tags: readonly string[]
 }
 
 export interface SkillContent {
@@ -29,6 +29,7 @@ export interface SkillContent {
   readonly userInvocable: boolean
   readonly content: string
   readonly directory: string
+  readonly tags: readonly string[]
 }
 
 interface Frontmatter {
@@ -37,6 +38,7 @@ interface Frontmatter {
   whenToUse: string | undefined
   disableModel: boolean | undefined
   userInvocable: boolean | undefined
+  tags: string[] | undefined
 }
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-_.]*$/
@@ -88,10 +90,10 @@ export function defaultGlobalSkillsRoot(env: EnvLike = process.env): string {
 
 /**
  * 扫描 user-dsh 全局激活池（磁盘真相）：`~/.dsh/skills/` 下每个含 SKILL.md 的目录。
- * 不递归（官方层无分组语义）；目录名即技能名（无 frontmatter 也返回，靠目录名兜底）。
+ * 不递归（官方层无子目录布局）；目录名即技能名（无 frontmatter 也返回，靠目录名兜底）。
  */
-export function listGlobalEntries(root: string): Array<{ readonly name: string; readonly description: string; readonly directory: string }> {
-  const entries: Array<{ name: string; description: string; directory: string }> = []
+export function listGlobalEntries(root: string): Array<{ readonly name: string; readonly description: string; readonly directory: string; readonly tags: readonly string[] }> {
+  const entries: Array<{ name: string; description: string; directory: string; tags: string[] }> = []
   if (!existsSync(root)) return entries
   for (const dirent of readdirSync(root, { withFileTypes: true })) {
     if (!dirent.isDirectory()) continue
@@ -105,6 +107,7 @@ export function listGlobalEntries(root: string): Array<{ readonly name: string; 
       name,
       description: parsed?.fm.description ?? '(无 frontmatter 描述)',
       directory: dir,
+      tags: parsed?.fm.tags ?? [],
     })
   }
   return entries
@@ -114,9 +117,9 @@ export function isValidSkillName(name: string): boolean {
   return NAME_PATTERN.test(name)
 }
 
-/** 分组名：1-32 位字母/数字/连字符/下划线/点/空格；不可含路径分隔符，不可为空。 */
-export function isValidGroupName(group: string): boolean {
-  return GROUP_PATTERN.test(group) && !group.includes('/') && !group.includes('\\')
+/** 分组 tag：1-32 位字母/数字/连字符/下划线/点/空格；不可含路径分隔符，不可为空。 */
+export function isValidTagName(tag: string): boolean {
+  return GROUP_PATTERN.test(tag) && !tag.includes('/') && !tag.includes('\\')
 }
 
 export function parseSkillFile(raw: string): { fm: Frontmatter; body: string } | undefined {
@@ -157,17 +160,46 @@ export function parseSkillFile(raw: string): { fm: Frontmatter; body: string } |
     }
     return undefined
   }
+  /** tags：支持 `tags: [a, b]`、`tags: a, b` 与块列表 `tags:\n  - a`。 */
+  const list = (key: string): string[] | undefined => {
+    const re = new RegExp('^' + key + ':(\\s)*(.*)$')
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      if (line === undefined) continue
+      const lm = line.match(re)
+      if (lm === null) continue
+      const rest = (lm[2] ?? '').trim()
+      if (rest === '') {
+        const parts: string[] = []
+        for (let j = i + 1; j < lines.length; j++) {
+          const next = lines[j]
+          if (next === undefined) continue
+          const bm = next.match(/^\s*-\s*(.+)$/)
+          if (bm !== null) parts.push(bm[1]?.trim() ?? '')
+          else if (next.trim() === '') continue
+          else break
+        }
+        return parts.length > 0 ? parts : undefined
+      }
+      // `[a, b]` 或 `a, b`
+      const inner = rest.startsWith('[') && rest.endsWith(']') ? rest.slice(1, -1) : rest
+      const parts = inner.split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(s => s !== '')
+      return parts.length > 0 ? parts : undefined
+    }
+    return undefined
+  }
   const fm: Frontmatter = {
     name: scalar('name'),
     description: scalar('description'),
     whenToUse: scalar('whenToUse'),
     disableModel: bool('disable-model-invocation'),
     userInvocable: bool('user-invocable'),
+    tags: list('tags'),
   }
   return { fm, body }
 }
 
-function parseDir(dir: string, group?: string): PoolEntry | undefined {
+function parseDir(dir: string): PoolEntry | undefined {
   const skillPath = join(dir, 'SKILL.md')
   if (!existsSync(skillPath)) return undefined
   const raw = readText(skillPath)
@@ -181,14 +213,13 @@ function parseDir(dir: string, group?: string): PoolEntry | undefined {
     modelInvocable: parsed.fm.disableModel !== true,
     userInvocable: parsed.fm.userInvocable !== false,
     directory: dir,
-    ...(group === undefined ? {} : { group }),
+    tags: parsed.fm.tags ?? [],
   }
 }
 
 /**
- * 扫描本地池（磁盘真相）。规则：
- * - `local/<skill>/`（含 SKILL.md）= 无分组技能；
- * - `local/<group>/`（不含 SKILL.md，但有子目录）= 分组，其下 `local/<group>/<skill>/` 归该组。
+ * 扫描本地池（磁盘真相）。目录结构只作存放位置：递归兼容 `local/<skill>/` 与
+ * 旧 `local/<group>/<skill>/` 布局；分组展示一律走 frontmatter tags，不看目录层级。
  */
 export function listPoolEntries(poolRoot: string): PoolEntry[] {
   const entries: PoolEntry[] = []
@@ -202,10 +233,10 @@ export function listPoolEntries(poolRoot: string): PoolEntry[] {
       entries.push(direct)
       continue
     }
-    // 分组目录：无 SKILL.md 但有子技能目录。
+    // 旧目录分组（不含 SKILL.md 但有子技能目录）：递归收录其下技能，不产生分组语义。
     for (const child of readdirSync(dir, { withFileTypes: true })) {
       if (!child.isDirectory()) continue
-      const parsed = parseDir(join(dir, child.name), dirent.name)
+      const parsed = parseDir(join(dir, child.name))
       if (parsed !== undefined) entries.push(parsed)
     }
   }
@@ -231,5 +262,33 @@ export function readSkillContent(entry: PoolEntry): SkillContent | undefined {
     userInvocable: parsed.fm.userInvocable !== false,
     content: parsed.body,
     directory: entry.directory,
+    tags: parsed.fm.tags ?? [],
   }
+}
+
+/**
+ * 写操作：替换/新增 SKILL.md frontmatter 的 `tags:` 行（跨池共享分组维度）。
+ * 仅改 tags 行，其余 frontmatter 与正文逐字保留；无 frontmatter 或不可解析时拒绝。
+ */
+export function setSkillTags(directory: string, tags: readonly string[]): { ok: true } | { ok: false; reason: string } {
+  const skillPath = join(directory, 'SKILL.md')
+  if (!existsSync(skillPath)) return { ok: false, reason: 'SKILL.md 不存在' }
+  const raw = readText(skillPath)
+  if (raw === undefined) return { ok: false, reason: 'SKILL.md 不可读' }
+  const m = raw.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/)
+  if (m === null || m[2] === undefined) return { ok: false, reason: '无 frontmatter，无法写 tags' }
+  const fmText = m[2]
+  const lineSep = fmText.includes('\r\n') ? '\r\n' : '\n'
+  const lines = fmText.split(/\r?\n/)
+  const tagLine = tags.length === 0 ? 'tags: []' : `tags: [${tags.join(', ')}]`
+  const idx = lines.findIndex(line => /^tags:/.test(line))
+  if (idx >= 0) lines[idx] = tagLine
+  else lines.push(tagLine)
+  const next = raw.slice(0, m[0].length - fmText.length) + lines.join(lineSep) + m[3]
+  try {
+    writeFileSync(skillPath, next, 'utf8')
+  } catch (error) {
+    return { ok: false, reason: `写入失败：${error instanceof Error ? error.message : String(error)}` }
+  }
+  return { ok: true }
 }

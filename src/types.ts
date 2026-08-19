@@ -8,8 +8,8 @@ export interface SkillPanelBrowseEntry {
   readonly name: string
   readonly description: string
   readonly introduced: boolean
-  /** 分组名（local/<group>/<skill>/ 时存在）；无分组技能省略。 */
-  readonly group?: string
+  /** frontmatter tags（跨池共享分组维度）。 */
+  readonly tags: readonly string[]
 }
 
 export interface SkillPanelBrowseRequest {
@@ -25,6 +25,8 @@ export interface SkillPanelBrowseResult {
 export interface SkillPanelIntroducedSkill {
   readonly name: string
   readonly description?: string
+  /** 会话引入的 tag 视图（从池/全局的 SKILL.md 读取；无则空数组）。 */
+  readonly tags?: readonly string[]
 }
 
 export interface SkillPanelListRequest {
@@ -75,15 +77,15 @@ export type SkillPanelRemoveResult =
   | { readonly ok: true; readonly name: string }
   | { readonly ok: false; readonly reason: string }
 
-export interface SkillPanelMoveRequest {
+export interface SkillPanelSetTagsRequest {
   readonly sessionId: string
   readonly name: string
-  /** 目标分组；省略/空 = 移到顶层（移出分组）。 */
-  readonly group?: string
+  /** 完整 tags 列表（整体替换）；空数组 = 清除分组。 */
+  readonly tags: readonly string[]
 }
 
-export type SkillPanelMoveResult =
-  | { readonly ok: true; readonly name: string; readonly group?: string }
+export type SkillPanelSetTagsResult =
+  | { readonly ok: true; readonly name: string; readonly tags: readonly string[] }
   | { readonly ok: false; readonly reason: string }
 
 // ---- 全局激活池（user-dsh 层，进程级自动可见）管理 ----
@@ -92,6 +94,8 @@ export type SkillPanelMoveResult =
 export interface SkillPanelGlobalEntry {
   readonly name: string
   readonly description: string
+  /** frontmatter tags（跨池共享分组维度）。 */
+  readonly tags: readonly string[]
 }
 
 export interface SkillPanelGlobalListRequest {

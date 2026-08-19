@@ -21,12 +21,12 @@ export interface SessionSkillConfig {
   readonly store: SessionSkillStore
 }
 
-/** 按分组渲染浏览结果（分组标题 + 组内条目；无分组技能归「ungrouped」）。 */
+/** 按 tags 渲染浏览结果（分组标题 + 组内条目；无 tag 技能归「ungrouped」，行尾附全部 tags）。 */
 function renderBrowse(items: PoolBrowseEntry[]): string {
   if (items.length === 0) return 'no skills in pool'
   const groups = new Map<string, PoolBrowseEntry[]>()
   for (const item of items) {
-    const key = item.group ?? 'ungrouped'
+    const key = item.tags.length === 0 ? 'ungrouped' : item.tags[0]
     const list = groups.get(key)
     if (list === undefined) groups.set(key, [item])
     else list.push(item)
@@ -35,7 +35,8 @@ function renderBrowse(items: PoolBrowseEntry[]): string {
   for (const [group, entries] of groups) {
     const lines = entries.map((item) => {
       const state = item.introduced ? ' [introduced]' : ''
-      return '- ' + item.name + state + ': ' + item.description
+      const tags = item.tags.length === 0 ? '' : ` (tags: ${item.tags.join(', ')})`
+      return '- ' + item.name + state + tags + ': ' + item.description
     })
     blocks.push(`[${group}]\n` + lines.join('\n'))
   }

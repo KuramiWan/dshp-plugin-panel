@@ -3,12 +3,13 @@
  *
  * 5 个方法全部转发共享核心（actions.ts + pool.ts 只读层 + SessionSkillStore 会话句柄），
  * 与 session_skill_* 模型工具、/skill-* 斜杠命令三面同源（ADR-0007「三面同源」），不新增业务语义：
- * - browse / list / detail 为只读；
- * - introduce / remove / moveSkill 与命令/工具同一代码路径（幂等、会话隔离、影子覆盖提示）。
+ * - browse / list / detail / globalList 为只读；
+ * - introduce / remove / setTags / activate / deactivate 与命令/工具同一代码路径（幂等、会话隔离）。
  *
  * 通道：DSH 自带 webServer（同进程 HTTP，client 用相对路径 fetch）。
  * 端点：POST /skill-panel/<method>，body 为 JSON 载荷，响应为 JSON。
- * 方法：browse / list / detail / introduce / removeSkill / moveSkill。
+ * 方法：browse / list / detail / introduce / removeSkill / setTags / globalList /
+ *       globalActivate / globalDeactivate + mcp*。
  *
  * 与 monorepo 解耦：本服务不依赖 typert 生成器/桩，仅用 node:http 与 DSH 的
  * webServer 服务，可脱离 monorepo 独立构建（发布 npm / 独立安装的前提）。
@@ -22,7 +23,7 @@ import {
   browsePool,
   introduceSkill,
   removeSkill,
-  moveSkill,
+  setSkillTags,
   activateGlobal,
   deactivateGlobal,
   filterBrowse,
@@ -41,8 +42,8 @@ import type {
   SkillPanelListResult,
   SkillPanelRemoveRequest,
   SkillPanelRemoveResult,
-  SkillPanelMoveRequest,
-  SkillPanelMoveResult,
+  SkillPanelSetTagsRequest,
+  SkillPanelSetTagsResult,
   SkillPanelGlobalListRequest,
   SkillPanelGlobalListResult,
   SkillPanelGlobalActivateRequest,
@@ -142,8 +143,8 @@ export class SkillPanelService {
         case 'removeSkill':
           result = this.removeSkill(payload as unknown as SkillPanelRemoveRequest)
           break
-        case 'moveSkill':
-          result = this.moveSkill(payload as unknown as SkillPanelMoveRequest)
+        case 'setTags':
+          result = this.setTags(payload as unknown as SkillPanelSetTagsRequest)
           break
         case 'globalList':
           result = this.globalList(payload as unknown as SkillPanelGlobalListRequest)
@@ -221,7 +222,7 @@ export class SkillPanelService {
     return { entries: items.slice(0, limit) as SkillPanelBrowseEntry[] }
   }
 
-  /** 当前会话已引入清单。 */
+  /** 当前会话已引入清单（含 tags 视图：从池/全局 SKILL.md 读取）。 */
   async list(request: SkillPanelListRequest): Promise<SkillPanelListResult> {
     const agent = this.agentOf(request.sessionId)
     const names = this.store.names(agent)
@@ -230,9 +231,21 @@ export class SkillPanelService {
     return {
       skills: names.map((name) => {
         const match = view.find(skill => skill.name === name)
-        return { name, ...(match?.description === undefined ? {} : { description: match.description }) }
+        const pool = findPoolEntry(this.poolRoot, name)
+        const tags = pool !== undefined ? pool.tags : this.globalTagsOf(name)
+        return {
+          name,
+          ...(match?.description === undefined ? {} : { description: match.description }),
+          ...(tags.length === 0 ? {} : { tags }),
+        }
       }),
     }
+  }
+
+  /** 从 user-dsh 全局层读某技能 tags（会话引入可能来自全局层）。 */
+  private globalTagsOf(name: string): readonly string[] {
+    const entry = listGlobalEntries(defaultGlobalSkillsRoot()).find(e => e.name === name)
+    return entry?.tags ?? []
   }
 
   /** 单个技能的完整定义（名称/说明/适用场景/正文）。 */
@@ -272,19 +285,19 @@ export class SkillPanelService {
     return { ok: true, name: result.name }
   }
 
-  /** 分组移动（用户 UI 自管分组）：把技能目录移到 local/<group>/<name>（空 group = 移到顶层）。 */
-  moveSkill(request: SkillPanelMoveRequest): SkillPanelMoveResult {
+  /** 打 tag（跨池共享分组）：写技能 SKILL.md frontmatter 的 tags 字段（整体替换）。 */
+  setTags(request: SkillPanelSetTagsRequest): SkillPanelSetTagsResult {
     this.agentOf(request.sessionId)
-    const result = moveSkill(this.poolRoot, request.name, request.group)
+    const result = setSkillTags(this.poolRoot, request.name, request.tags)
     if (!result.ok) return { ok: false, reason: result.reason }
-    return { ok: true, name: result.name, ...(result.group === undefined ? {} : { group: result.group }) }
+    return { ok: true, name: result.name, tags: result.tags }
   }
 
-  /** 全局激活池（user-dsh 层）清单：进程级自动可见的技能。 */
+  /** 全局激活池（user-dsh 层）清单：进程级自动可见的技能（含 tags）。 */
   globalList(request: SkillPanelGlobalListRequest): SkillPanelGlobalListResult {
     this.agentOf(request.sessionId)
     const root = defaultGlobalSkillsRoot()
-    return { entries: listGlobalEntries(root).map(e => ({ name: e.name, description: e.description })) }
+    return { entries: listGlobalEntries(root).map(e => ({ name: e.name, description: e.description, tags: e.tags })) }
   }
 
   /** 启用：可用池 → 全局激活池（user-dsh 层，进程级自动可见）。 */

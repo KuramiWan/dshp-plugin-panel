@@ -1,8 +1,9 @@
 /**
  * DSHP skill 三入口（模型工具 / 斜杠命令 / 面板 Remote）共享的核心动作（ADR-0007「三面同源」）。
- * 把 browse / introduce / remove 的业务逻辑收敛到一处，避免 skills/commands/service 各自手写漂移。
+ * 把 browse / introduce / remove / setTags 的业务逻辑收敛到一处，避免 skills/commands/service 各自手写漂移。
  * 各表面（tools.ts / commands.ts / skill-panel-service.ts）只负责把统一结果格式化为自身形状。
  * 池 = 用户自管的唯一内容源（local/，放文件=加入管理）：无订阅/生态/信任概念，全量可引入。
+ * 分组（2026-08-19）：统一用技能 frontmatter `tags`，三池（全局激活 / 可用池 / 会话引入）共享。
  * 引入 = 纯会话注册：把池内技能注册进当前会话运行时（agent scope），不改动任何磁盘文件；
  * 会话引入集由 SessionSkillStore 持久化（宿主重启后按会话恢复，见 handles.ts replay）。
  */
@@ -14,10 +15,11 @@ import {
   defaultGlobalSkillsRoot,
   findPoolEntry,
   isValidSkillName,
-  isValidGroupName,
+  isValidTagName,
   listGlobalEntries,
   listPoolEntries,
   readSkillContent,
+  setSkillTags as writeSkillTags,
 } from './pool.ts'
 import type { SessionSkillStore } from './handles.ts'
 
@@ -26,8 +28,8 @@ export interface PoolBrowseEntry {
   readonly name: string
   readonly description: string
   readonly introduced: boolean
-  /** 分组名（local/<group>/<skill>/ 时存在）；无分组技能省略。 */
-  readonly group?: string
+  /** frontmatter tags（跨池共享分组维度）。 */
+  readonly tags: readonly string[]
 }
 
 /**
@@ -48,14 +50,14 @@ export type RemoveResult =
   | { readonly ok: true; readonly name: string }
   | { readonly ok: false; readonly reason: string }
 
-/** 生成池浏览条目列表（local 全量），标记 introduced 与分组。 */
+/** 生成池浏览条目列表（local 全量），标记 introduced 与 tags。 */
 export function browsePool(poolRoot: string, agent: Agent, store: SessionSkillStore): PoolBrowseEntry[] {
   const introduced = new Set(store.names(agent))
   return listPoolEntries(poolRoot).map((entry) => ({
     name: entry.name,
     description: entry.description,
     introduced: introduced.has(entry.name),
-    ...(entry.group === undefined ? {} : { group: entry.group }),
+    tags: entry.tags,
   }))
 }
 
@@ -129,37 +131,25 @@ export async function replaySession(ctx: Context, poolRoot: string, store: Sessi
   }
 }
 
-export type MoveSkillResult =
-  | { readonly ok: true; readonly name: string; readonly group?: string }
+export type SetTagsResult =
+  | { readonly ok: true; readonly name: string; readonly tags: readonly string[] }
   | { readonly ok: false; readonly reason: string }
 
 /**
- * 分组移动（2026-08-19，用户 UI 自管分组）：把池内技能目录移到 `local/<group>/<name>`。
- * group 省略/空 = 移到顶层 `local/<name>`（移出分组）。只移动目录（rename），不复制文件；
- * 分组只影响池结构，已引入会话的注册不受影响（引入集按 name 记录，重启重放自动用新路径）。
+ * 打 tag（2026-08-19，跨池共享分组）：写技能 SKILL.md frontmatter 的 `tags` 字段。
+ * 技能在池 local/ 或全局层（~/.dsh/skills）均可；只改 tags 行，其余内容逐字保留。
+ * 分组是技能自身元数据，移动到任何一层 tag 都跟着——三池（全局激活/可用池/会话引入）共享。
  */
-export function moveSkill(poolRoot: string, name: string, group?: string): MoveSkillResult {
+export function setSkillTags(poolRoot: string, name: string, tags: readonly string[]): SetTagsResult {
   if (!isValidSkillName(name)) return { ok: false, reason: `非法技能名 "${name}"` }
-  if (group !== undefined && group !== '' && !isValidGroupName(group)) {
-    return { ok: false, reason: `非法分组名 "${group}"` }
+  for (const tag of tags) {
+    if (!isValidTagName(tag)) return { ok: false, reason: `非法 tag "${tag}"` }
   }
   const entry = findPoolEntry(poolRoot, name)
-  if (entry === undefined) return { ok: false, reason: `池中未找到 "${name}"` }
-  const localRoot = join(poolRoot, 'local')
-  const current = entry.directory
-  const targetDir = group === undefined || group === '' ? localRoot : join(localRoot, group)
-  const target = join(targetDir, name)
-  if (current === target) {
-    return { ok: true, name, ...(group === undefined || group === '' ? {} : { group }) }
-  }
-  if (existsSync(target)) return { ok: false, reason: `目标已存在 "${target}"` }
-  try {
-    mkdirSync(targetDir, { recursive: true })
-    renameSync(current, target)
-  } catch (error) {
-    return { ok: false, reason: `移动失败：${error instanceof Error ? error.message : String(error)}` }
-  }
-  return { ok: true, name, ...(group === undefined || group === '' ? {} : { group }) }
+  if (entry === undefined) return { ok: false, reason: `可用池中未找到 "${name}"` }
+  const result = writeSkillTags(entry.directory, tags)
+  if (!result.ok) return { ok: false, reason: result.reason }
+  return { ok: true, name, tags }
 }
 
 // ---- 全局激活池（user-dsh 层，进程级自动可见）与可用池（local/）之间的流转 ----

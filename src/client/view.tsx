@@ -1,13 +1,15 @@
 /**
  * 技能面板共享视图：三区布局——
- * 「全局激活（user-dsh 层，进程级自动可见：停用 / 详情）」+
- * 「可用池（用户自管内容：启用 / 引入 / 分组 / 详情）」+「本会话已引入（移除）」。
- * 全局激活池 = ~/.dsh/skills（DSH skill-filesystem 扫描，所有会话自动可见）；
- * 可用池 = local/ 按分组折叠展示（local/<group>/<skill>/ 归组，顶层归「未分组」）。
- * 启用/停用 = 在两区之间移动目录（不复制、不删除内容）；分组只影响展示。
+ * 「全局激活（user-dsh 层，进程级自动可见：停用 / 打 tag）」
+ * 「可用池（用户自管内容：启用 / 引入 / 打 tag / 详情）」
+ * 「本会话已引入（移除）」。
+ * 分组统一用技能 frontmatter `tags`，三池共享：全局激活 / 可用池 / 会话引入
+ * 都按 tags 折叠展示（无 tags 归「未分组」）；tag 编辑写 SKILL.md，技能移到
+ * 任何一层 tag 都跟着。启用/停用 = 目录在全局层与可用池间移动（不复制不删除）。
  * 数据走 HTTP 客户端（api.ts，相对路径 fetch）。
  */
 import { useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { SkillPanelLocaleDict } from './locale.ts'
 import type { SkillPanelClient } from './api.ts'
 
@@ -15,17 +17,19 @@ export interface SkillPanelBrowseEntry {
   name: string
   description: string
   introduced: boolean
-  group?: string
+  tags: readonly string[]
 }
 
 export interface SkillPanelIntroducedSkill {
   name: string
   description?: string
+  tags?: readonly string[]
 }
 
 export interface SkillPanelGlobalEntry {
   name: string
   description: string
+  tags: readonly string[]
 }
 
 export interface SkillPanelViewProps {
@@ -36,9 +40,13 @@ export interface SkillPanelViewProps {
 
 type Notice = { kind: 'ok' | 'error'; text: string } | null
 
-/** 展示分组键：有分组用其名，无分组用空串（渲染为「未分组」）。 */
-function groupKey(entry: SkillPanelBrowseEntry): string {
-  return entry.group ?? ''
+/** 条目统一视图：面板里三区都转成它来分组/展示。 */
+interface SkillItem {
+  name: string
+  description: string
+  tags: readonly string[]
+  /** 额外标记（全局激活 / 已引入）。 */
+  badge?: 'global' | 'introduced'
 }
 
 export function SkillPanelView(props: SkillPanelViewProps) {
@@ -50,13 +58,10 @@ export function SkillPanelView(props: SkillPanelViewProps) {
   const [error, setError] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice>(null)
-  const [openDetail, setOpenDetail] = useState<string | null>(null)
-  const [detail, setDetail] = useState<{ whenToUse?: string; content: string } | null>(null)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
-  const [moveFor, setMoveFor] = useState<string | null>(null)
-  const [moveGroup, setMoveGroup] = useState('')
-  const [moveNew, setMoveNew] = useState('')
-  const [moveIsNew, setMoveIsNew] = useState(false)
+  /** 打 tag 行：name → 当前 tags 文本。 */
+  const [tagFor, setTagFor] = useState<string | null>(null)
+  const [tagText, setTagText] = useState('')
 
   const refresh = (): void => {
     if (client === undefined) return
@@ -86,19 +91,48 @@ export function SkillPanelView(props: SkillPanelViewProps) {
   const globalsList = useMemo(() => globals ?? [], [globals])
   const introducedList = useMemo(() => introduced ?? [], [introduced])
 
-  /** 按分组键排序后的 [group, entries[]] 列表（组间按组名，组内按技能名）。 */
-  const grouped = useMemo(() => {
-    const map = new Map<string, SkillPanelBrowseEntry[]>()
-    for (const entry of visible) {
-      const key = groupKey(entry)
-      const list = map.get(key)
-      if (list === undefined) map.set(key, [entry])
-      else list.push(entry)
+  /** 三区合并为 SkillItem[]（可用池条目为主，附 introduced 标记）。 */
+  const poolItems: SkillItem[] = useMemo(() => visible.map(e => ({
+    name: e.name,
+    description: e.description,
+    tags: e.tags,
+    ...(e.introduced ? { badge: 'introduced' as const } : {}),
+  })), [visible])
+  const globalItems: SkillItem[] = useMemo(() => globalsList.map(g => ({
+    name: g.name,
+    description: g.description,
+    tags: g.tags,
+    badge: 'global' as const,
+  })), [globalsList])
+  const introducedItems: SkillItem[] = useMemo(() => introducedList.map(s => ({
+    name: s.name,
+    description: s.description ?? '',
+    tags: s.tags ?? [],
+    badge: 'introduced' as const,
+  })), [introducedList])
+
+  /**
+   * 按 tags 分组（跨池统一）：一个技能有多个 tag 出现在多个组；无 tag 归「未分组」。
+   * 返回 [tagKey, items][]，tagKey 为空串 = 未分组。
+   */
+  const groupByTags = (items: readonly SkillItem[]): Array<[string, SkillItem[]]> => {
+    const map = new Map<string, SkillItem[]>()
+    for (const item of items) {
+      const keys = item.tags.length === 0 ? [''] : [...item.tags]
+      for (const key of keys) {
+        const list = map.get(key)
+        if (list === undefined) map.set(key, [item])
+        else if (!list.some(x => x.name === item.name)) list.push(item)
+      }
     }
     const groups = [...map.entries()].sort((a, b) => (a[0] === '' ? 1 : b[0] === '' ? -1 : a[0].localeCompare(b[0])))
     for (const [, list] of groups) list.sort((a, b) => a.name.localeCompare(b.name))
     return groups
-  }, [visible])
+  }
+
+  const groupedPool = useMemo(() => groupByTags(poolItems), [poolItems, query])
+  const groupedGlobal = useMemo(() => groupByTags(globalItems), [globalItems])
+  const groupedIntroduced = useMemo(() => groupByTags(introducedItems), [introducedItems])
 
   const toggleGroup = (key: string): void => {
     setCollapsed(prev => {
@@ -109,41 +143,24 @@ export function SkillPanelView(props: SkillPanelViewProps) {
     })
   }
 
-  /** 已有分组名（去重、含未分组以外的全部命名组）。 */
-  const existingGroups = useMemo(() => {
-    const set = new Set<string>()
-    for (const entry of visible) {
-      if (entry.group !== undefined && entry.group !== '') set.add(entry.group)
-    }
-    return [...set].sort((a, b) => a.localeCompare(b))
-  }, [visible])
-
-  const openMove = (entry: SkillPanelBrowseEntry): void => {
-    setMoveFor(entry.name)
-    setMoveGroup(entry.group ?? '')
-    setMoveNew('')
-    setMoveIsNew(false)
+  const openTag = (item: SkillItem): void => {
+    setTagFor(item.name)
+    setTagText(item.tags.join(', '))
   }
 
-  const closeMove = (): void => {
-    setMoveFor(null)
-    setMoveIsNew(false)
+  const closeTag = (): void => {
+    setTagFor(null)
   }
 
-  const runMove = (name: string): void => {
+  const runSetTags = (name: string): void => {
     if (busy || client === undefined) return
-    // 新建模式：以输入框内容为目标分组（空 = 未命名，拒绝）；否则用下拉选择。
-    const target = moveIsNew ? moveNew.trim() : moveGroup
-    if (moveIsNew && target === '') {
-      setNotice({ kind: 'error', text: t('group.move.needName') })
-      return
-    }
+    const tags = tagText.split(',').map(s => s.trim()).filter(s => s !== '')
     setBusy(true)
-    void client.moveSkill({ sessionId, name, ...(target === '' ? {} : { group: target }) }).then((result) => {
+    void client.setTags({ sessionId, name, tags }).then((result) => {
       setBusy(false)
       if (result.ok) {
-        setNotice({ kind: 'ok', text: target === '' ? t('notice.moved.out') : `${t('notice.moved')}: ${result.group ?? target}` })
-        closeMove()
+        setNotice({ kind: 'ok', text: `${t('notice.tagged')}: ${result.name}` })
+        closeTag()
       } else {
         setNotice({ kind: 'error', text: `${t('notice.failed')}: ${result.reason}` })
       }
@@ -218,19 +235,60 @@ export function SkillPanelView(props: SkillPanelViewProps) {
     })
   }
 
-  const toggleDetail = (name: string): void => {
-    if (client === undefined) return
-    if (openDetail === name) {
-      setOpenDetail(null)
-      setDetail(null)
-      return
-    }
-    setOpenDetail(name)
-    setDetail(null)
-    void client.detail({ sessionId, name }).then((result) => {
-      if (result.ok) setDetail({ whenToUse: result.whenToUse, content: result.content })
-      else setDetail({ content: result.reason ?? '' })
-    }).catch(() => setDetail({ content: t('error') }))
+  const renderTagRow = (item: SkillItem): ReactNode => {
+    if (tagFor !== item.name) return null
+    return (
+      <div className="dshp-move">
+        <span className="dshp-detail-label">{t('tag.edit.label')}：</span>
+        <input
+          className="dshp-input dshp-move-new"
+          placeholder={t('tag.edit.placeholder')}
+          value={tagText}
+          onChange={event => setTagText(event.target.value)}
+        />
+        <button className="dshp-btn dshp-btn-primary" disabled={busy} onClick={() => runSetTags(item.name)}>{t('action.apply')}</button>
+        <button className="dshp-btn" onClick={closeTag}>{t('action.cancel')}</button>
+      </div>
+    )
+  }
+
+  /** 渲染一组（分组折叠 + 条目）。 */
+  const renderGroup = (groups: Array<[string, SkillItem[]]>, actions: (item: SkillItem) => ReactNode): ReactNode => {
+    if (groups.length === 0) return null
+    return (
+      <div className="dshp-list">
+        {groups.map(([group, list]) => {
+          const key = group === '' ? 'ungrouped' : group
+          const isCollapsed = collapsed.has(key)
+          return (
+            <div className="dshp-group" key={key}>
+              <button className="dshp-group-head" onClick={() => toggleGroup(key)}>
+                <span className="dshp-group-caret">{isCollapsed ? '▸' : '▾'}</span>
+                <span className="dshp-group-name">{group === '' ? t('group.ungrouped') : group}</span>
+                <span className="dshp-group-count">（{list.length}）</span>
+              </button>
+              {!isCollapsed && list.map(item => (
+                <div className="dshp-item" key={item.name}>
+                  <div className="dshp-item-head">
+                    <span className="dshp-name">{item.name}</span>
+                    {item.badge === 'global' && <span className="dshp-tag dshp-tag-intro">{t('global.active')}</span>}
+                    {item.badge === 'introduced' && <span className="dshp-tag dshp-tag-intro">{t('state.introduced')}</span>}
+                    <span className="dshp-actions">
+                      {actions(item)}
+                      <button className="dshp-btn" onClick={() => (tagFor === item.name ? closeTag() : openTag(item))}>
+                        {tagFor === item.name ? t('action.cancel') : t('action.tag')}
+                      </button>
+                    </span>
+                  </div>
+                  <div className="dshp-desc">{item.description}</div>
+                  {renderTagRow(item)}
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </div>
+    )
   }
 
   return (
@@ -256,136 +314,43 @@ export function SkillPanelView(props: SkillPanelViewProps) {
           <div className="dshp-section-title">{t('global.title')}</div>
           {busy && globals === null ? (
             <div className="dshp-empty">{t('loading')}</div>
-          ) : globalsList.length === 0 ? (
+          ) : globalItems.length === 0 ? (
             <div className="dshp-empty">{t('global.empty')}</div>
           ) : (
-            <div className="dshp-list">
-              {globalsList.map(g => (
-                <div className="dshp-item" key={g.name}>
-                  <div className="dshp-item-head">
-                    <span className="dshp-name">{g.name}</span>
-                    <span className="dshp-tag dshp-tag-intro">{t('global.active')}</span>
-                    <span className="dshp-actions">
-                      <button className="dshp-btn dshp-btn-danger" onClick={() => runDeactivate(g.name)}>{t('action.deactivate')}</button>
-                    </span>
-                  </div>
-                  <div className="dshp-desc">{g.description}</div>
-                </div>
-              ))}
-            </div>
+            renderGroup(groupedGlobal, item => (
+              <button className="dshp-btn dshp-btn-danger" onClick={() => runDeactivate(item.name)}>{t('action.deactivate')}</button>
+            ))
           )}
 
           <div className="dshp-section-title">{t('pool.title')}</div>
           {busy && entries === null ? (
             <div className="dshp-empty">{t('loading')}</div>
-          ) : visible.length === 0 ? (
+          ) : poolItems.length === 0 ? (
             <div className="dshp-empty">{query.trim().length > 0 ? t('list.empty') : t('pool.empty')}</div>
           ) : (
-            <div className="dshp-list">
-              {grouped.map(([group, list]) => {
-                const key = group === '' ? 'ungrouped' : group
-                const isCollapsed = collapsed.has(key)
-                return (
-                  <div className="dshp-group" key={key}>
-                    <button className="dshp-group-head" onClick={() => toggleGroup(key)}>
-                      <span className="dshp-group-caret">{isCollapsed ? '▸' : '▾'}</span>
-                      <span className="dshp-group-name">{group === '' ? t('group.ungrouped') : group}</span>
-                      <span className="dshp-group-count">（{list.length}）</span>
-                    </button>
-                    {!isCollapsed && list.map(entry => (
-                      <div className="dshp-item" key={entry.name}>
-                        <div className="dshp-item-head">
-                          <span className="dshp-name">{entry.name}</span>
-                          {entry.introduced && <span className="dshp-tag dshp-tag-intro">{t('state.introduced')}</span>}
-                          <span className="dshp-actions">
-                            {entry.introduced
-                              ? null
-                              : <button className="dshp-btn dshp-btn-primary" onClick={() => runIntroduce(entry.name)}>{t('action.introduce')}</button>}
-                            <button className="dshp-btn" onClick={() => runActivate(entry.name)}>{t('action.activate')}</button>
-                            <button className="dshp-btn" onClick={() => toggleDetail(entry.name)}>
-                              {openDetail === entry.name ? t('action.collapse') : t('action.detail')}
-                            </button>
-                            <button className="dshp-btn" onClick={() => (moveFor === entry.name ? closeMove() : openMove(entry))}>
-                              {moveFor === entry.name ? t('action.cancel') : t('action.group')}
-                            </button>
-                          </span>
-                        </div>
-                        <div className="dshp-desc">{entry.description}</div>
-                        {moveFor === entry.name && (
-                          <div className="dshp-move">
-                            <span className="dshp-detail-label">{t('group.move.label')}：</span>
-                            <select
-                              className="dshp-select"
-                              value={moveIsNew ? '__new__' : moveGroup}
-                              onChange={event => {
-                                const value = event.target.value
-                                if (value === '__new__') {
-                                  setMoveIsNew(true)
-                                  setMoveNew('')
-                                } else {
-                                  setMoveIsNew(false)
-                                  setMoveNew('')
-                                  setMoveGroup(value)
-                                }
-                              }}
-                            >
-                              <option value="">{t('group.move.none')}</option>
-                              {existingGroups.map(g => <option key={g} value={g}>{g}</option>)}
-                              <option value="__new__">{t('group.move.new')}</option>
-                            </select>
-                            {moveIsNew && (
-                              <input
-                                className="dshp-input dshp-move-new"
-                                placeholder={t('group.move.newPlaceholder')}
-                                value={moveNew}
-                                onChange={event => setMoveNew(event.target.value)}
-                              />
-                            )}
-                            <button className="dshp-btn dshp-btn-primary" disabled={busy} onClick={() => runMove(entry.name)}>{t('action.apply')}</button>
-                          </div>
-                        )}
-                        {openDetail === entry.name && (
-                          <div className="dshp-detail">
-                            {detail === null ? t('loading') : (
-                              <>
-                                {detail.whenToUse !== undefined && detail.whenToUse.length > 0 && (
-                                  <div><span className="dshp-detail-label">{t('detail.when')}：</span>{detail.whenToUse}</div>
-                                )}
-                                <div><span className="dshp-detail-label">{t('detail.content')}：</span>{detail.content}</div>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )
-              })}
-            </div>
+            renderGroup(groupedPool, item => (
+              <>
+                {item.badge === 'introduced'
+                  ? null
+                  : <button className="dshp-btn dshp-btn-primary" onClick={() => runIntroduce(item.name)}>{t('action.introduce')}</button>}
+                <button className="dshp-btn" onClick={() => runActivate(item.name)}>{t('action.activate')}</button>
+              </>
+            ))
           )}
 
           <div className="dshp-section-title">{t('introduced.title')}</div>
           {busy && introduced === null ? (
             <div className="dshp-empty">{t('loading')}</div>
-          ) : introducedList.length === 0 ? (
+          ) : introducedItems.length === 0 ? (
             <div className="dshp-empty">{t('introduced.empty')}</div>
           ) : (
-            <div className="dshp-list">
-              {introducedList.map(skill => (
-                <div className="dshp-item" key={skill.name}>
-                  <div className="dshp-item-head">
-                    <span className="dshp-name">{skill.name}</span>
-                    <span className="dshp-actions">
-                      <button className="dshp-btn dshp-btn-danger" onClick={() => runRemove(skill.name)}>{t('action.remove')}</button>
-                    </span>
-                  </div>
-                  {skill.description !== undefined && <div className="dshp-desc">{skill.description}</div>}
-                </div>
-              ))}
-            </div>
+            renderGroup(groupedIntroduced, item => (
+              <button className="dshp-btn dshp-btn-danger" onClick={() => runRemove(item.name)}>{t('action.remove')}</button>
+            ))
           )}
         </>
       )}
     </div>
   )
 }
+
