@@ -284,7 +284,8 @@ export function setSkillTags(directory: string, tags: readonly string[]): { ok: 
   const idx = lines.findIndex(line => /^tags:/.test(line))
   if (idx >= 0) lines[idx] = tagLine
   else lines.push(tagLine)
-  const next = raw.slice(0, m[0].length - fmText.length) + lines.join(lineSep) + m[3]
+  // m[1]=开头的 --- 行，m[3]=结尾的 --- 行；正文 = raw 从完整匹配后开始。
+  const next = m[1] + lines.join(lineSep) + m[3] + raw.slice(m[0].length)
   try {
     writeFileSync(skillPath, next, 'utf8')
   } catch (error) {
