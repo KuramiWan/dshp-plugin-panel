@@ -8,9 +8,12 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { existsSync, mkdirSync, renameSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   findPoolEntry,
   isValidSkillName,
+  isValidGroupName,
   listPoolEntries,
   readSkillContent,
 } from './pool.ts'
@@ -21,6 +24,8 @@ export interface PoolBrowseEntry {
   readonly name: string
   readonly description: string
   readonly introduced: boolean
+  /** 分组名（local/<group>/<skill>/ 时存在）；无分组技能省略。 */
+  readonly group?: string
 }
 
 /**
@@ -41,13 +46,14 @@ export type RemoveResult =
   | { readonly ok: true; readonly name: string }
   | { readonly ok: false; readonly reason: string }
 
-/** 生成池浏览条目列表（local 全量），标记 introduced。 */
+/** 生成池浏览条目列表（local 全量），标记 introduced 与分组。 */
 export function browsePool(poolRoot: string, agent: Agent, store: SessionSkillStore): PoolBrowseEntry[] {
   const introduced = new Set(store.names(agent))
   return listPoolEntries(poolRoot).map((entry) => ({
     name: entry.name,
     description: entry.description,
     introduced: introduced.has(entry.name),
+    ...(entry.group === undefined ? {} : { group: entry.group }),
   }))
 }
 
@@ -119,4 +125,37 @@ export async function replaySession(ctx: Context, poolRoot: string, store: Sessi
       console.warn(`[skill-panel] replay "${name}" for session "${id}" failed: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
+}
+
+export type MoveSkillResult =
+  | { readonly ok: true; readonly name: string; readonly group?: string }
+  | { readonly ok: false; readonly reason: string }
+
+/**
+ * 分组移动（2026-08-19，用户 UI 自管分组）：把池内技能目录移到 `local/<group>/<name>`。
+ * group 省略/空 = 移到顶层 `local/<name>`（移出分组）。只移动目录（rename），不复制文件；
+ * 分组只影响池结构，已引入会话的注册不受影响（引入集按 name 记录，重启重放自动用新路径）。
+ */
+export function moveSkill(poolRoot: string, name: string, group?: string): MoveSkillResult {
+  if (!isValidSkillName(name)) return { ok: false, reason: `非法技能名 "${name}"` }
+  if (group !== undefined && group !== '' && !isValidGroupName(group)) {
+    return { ok: false, reason: `非法分组名 "${group}"` }
+  }
+  const entry = findPoolEntry(poolRoot, name)
+  if (entry === undefined) return { ok: false, reason: `池中未找到 "${name}"` }
+  const localRoot = join(poolRoot, 'local')
+  const current = entry.directory
+  const targetDir = group === undefined || group === '' ? localRoot : join(localRoot, group)
+  const target = join(targetDir, name)
+  if (current === target) {
+    return { ok: true, name, ...(group === undefined || group === '' ? {} : { group }) }
+  }
+  if (existsSync(target)) return { ok: false, reason: `目标已存在 "${target}"` }
+  try {
+    mkdirSync(targetDir, { recursive: true })
+    renameSync(current, target)
+  } catch (error) {
+    return { ok: false, reason: `移动失败：${error instanceof Error ? error.message : String(error)}` }
+  }
+  return { ok: true, name, ...(group === undefined || group === '' ? {} : { group }) }
 }

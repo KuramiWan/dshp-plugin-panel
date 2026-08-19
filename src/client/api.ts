@@ -21,6 +21,8 @@ import type {
   SkillPanelIntroduceResult,
   SkillPanelRemoveRequest,
   SkillPanelRemoveResult,
+  SkillPanelMoveRequest,
+  SkillPanelMoveResult,
   SkillPanelMcpListRequest,
   SkillPanelMcpListResult,
   SkillPanelMcpConnectRequest,
@@ -51,6 +53,7 @@ export interface SkillPanelClient {
   detail(request: SkillPanelDetailRequest): Promise<SkillPanelDetailResult>
   introduce(request: SkillPanelIntroduceRequest): Promise<SkillPanelIntroduceResult>
   removeSkill(request: SkillPanelRemoveRequest): Promise<SkillPanelRemoveResult>
+  moveSkill(request: SkillPanelMoveRequest): Promise<SkillPanelMoveResult>
   mcpList(request: SkillPanelMcpListRequest): Promise<SkillPanelMcpListResult>
   mcpConnect(request: SkillPanelMcpConnectRequest): Promise<SkillPanelMcpConnectResult>
   mcpDisconnect(request: SkillPanelMcpDisconnectRequest): Promise<SkillPanelMcpDisconnectResult>
@@ -111,6 +114,13 @@ export function createSkillPanelClient(): SkillPanelClient {
         return (await post('removeSkill', request)) as SkillPanelRemoveResult
       } catch (error) {
         return foldFail<SkillPanelRemoveResult>(error)
+      }
+    },
+    moveSkill: async (request) => {
+      try {
+        return (await post('moveSkill', request)) as SkillPanelMoveResult
+      } catch (error) {
+        return foldFail<SkillPanelMoveResult>(error)
       }
     },
     mcpList: request => post('mcpList', request) as Promise<SkillPanelMcpListResult>,

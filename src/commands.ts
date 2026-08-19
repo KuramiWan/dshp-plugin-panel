@@ -17,13 +17,25 @@ export interface SessionSkillCommandConfig {
   readonly store: SessionSkillStore
 }
 
+/** 按分组渲染浏览结果（分组标题 + 组内条目；无分组技能归「未分组」）。 */
 function renderBrowse(items: readonly PoolBrowseEntry[]): string {
   if (items.length === 0) return '📚 技能池：无技能（把含 SKILL.md 的目录放进 ~/.dsh/.skill-pool/local/ 即加入管理）'
-  const lines = items.map((item) => {
-    const state = item.introduced ? ' [已引入]' : ''
-    return '  - ' + item.name + state + ': ' + item.description
-  })
-  return '📚 技能池（' + items.length + ' 条）：\n' + lines.join('\n')
+  const groups = new Map<string, PoolBrowseEntry[]>()
+  for (const item of items) {
+    const key = item.group ?? '未分组'
+    const list = groups.get(key)
+    if (list === undefined) groups.set(key, [item])
+    else list.push(item)
+  }
+  const blocks: string[] = []
+  for (const [group, entries] of groups) {
+    const lines = entries.map((item) => {
+      const state = item.introduced ? ' [已引入]' : ''
+      return '  - ' + item.name + state + ': ' + item.description
+    })
+    blocks.push(`【${group}】\n` + lines.join('\n'))
+  }
+  return '📚 技能池（' + items.length + ' 条，' + groups.size + ' 组）：\n' + blocks.join('\n')
 }
 
 /** /skill-browse [query] —— 池浏览。 */

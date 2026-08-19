@@ -8,6 +8,8 @@ export interface SkillPanelBrowseEntry {
   readonly name: string
   readonly description: string
   readonly introduced: boolean
+  /** 分组名（local/<group>/<skill>/ 时存在）；无分组技能省略。 */
+  readonly group?: string
 }
 
 export interface SkillPanelBrowseRequest {
@@ -71,6 +73,17 @@ export interface SkillPanelRemoveRequest {
 
 export type SkillPanelRemoveResult =
   | { readonly ok: true; readonly name: string }
+  | { readonly ok: false; readonly reason: string }
+
+export interface SkillPanelMoveRequest {
+  readonly sessionId: string
+  readonly name: string
+  /** 目标分组；省略/空 = 移到顶层（移出分组）。 */
+  readonly group?: string
+}
+
+export type SkillPanelMoveResult =
+  | { readonly ok: true; readonly name: string; readonly group?: string }
   | { readonly ok: false; readonly reason: string }
 
 // ---- 面板 MCP 管理边界载荷（会话级临时 MCP，7b 面板入口） ----

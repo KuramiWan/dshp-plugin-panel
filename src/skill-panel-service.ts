@@ -4,11 +4,11 @@
  * 5 个方法全部转发共享核心（actions.ts + pool.ts 只读层 + SessionSkillStore 会话句柄），
  * 与 session_skill_* 模型工具、/skill-* 斜杠命令三面同源（ADR-0007「三面同源」），不新增业务语义：
  * - browse / list / detail 为只读；
- * - introduce / remove 与命令/工具同一代码路径（幂等、会话隔离、影子覆盖提示）。
+ * - introduce / remove / moveSkill 与命令/工具同一代码路径（幂等、会话隔离、影子覆盖提示）。
  *
  * 通道：DSH 自带 webServer（同进程 HTTP，client 用相对路径 fetch）。
  * 端点：POST /skill-panel/<method>，body 为 JSON 载荷，响应为 JSON。
- * 方法：browse / list / detail / introduce / removeSkill。
+ * 方法：browse / list / detail / introduce / removeSkill / moveSkill。
  *
  * 与 monorepo 解耦：本服务不依赖 typert 生成器/桩，仅用 node:http 与 DSH 的
  * webServer 服务，可脱离 monorepo 独立构建（发布 npm / 独立安装的前提）。
@@ -18,7 +18,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { findPoolEntry, readSkillContent } from './pool.ts'
-import { browsePool, introduceSkill, removeSkill, filterBrowse } from './actions.ts'
+import { browsePool, introduceSkill, removeSkill, moveSkill, filterBrowse } from './actions.ts'
 import type { SessionSkillStore } from './handles.ts'
 import type { SessionMcpManager, McpServerTemplate } from './mcp-manager.ts'
 import type {
@@ -33,6 +33,8 @@ import type {
   SkillPanelListResult,
   SkillPanelRemoveRequest,
   SkillPanelRemoveResult,
+  SkillPanelMoveRequest,
+  SkillPanelMoveResult,
   SkillPanelMcpListRequest,
   SkillPanelMcpListResult,
   SkillPanelMcpConnectRequest,
@@ -127,6 +129,9 @@ export class SkillPanelService {
           break
         case 'removeSkill':
           result = this.removeSkill(payload as unknown as SkillPanelRemoveRequest)
+          break
+        case 'moveSkill':
+          result = this.moveSkill(payload as unknown as SkillPanelMoveRequest)
           break
         case 'mcpList':
           result = this.mcpList(payload as unknown as SkillPanelMcpListRequest)
@@ -244,6 +249,14 @@ export class SkillPanelService {
     const result = removeSkill(this.store, agent, request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
     return { ok: true, name: result.name }
+  }
+
+  /** 分组移动（用户 UI 自管分组）：把技能目录移到 local/<group>/<name>（空 group = 移到顶层）。 */
+  moveSkill(request: SkillPanelMoveRequest): SkillPanelMoveResult {
+    this.agentOf(request.sessionId)
+    const result = moveSkill(this.poolRoot, request.name, request.group)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true, name: result.name, ...(result.group === undefined ? {} : { group: result.group }) }
   }
 
   /** 会话 MCP：当前会话已连 server + 白名单候选视图。 */

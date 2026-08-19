@@ -11,6 +11,12 @@ const CSS = `
 .dshp-search:focus{outline:none;border-color:var(--dsw-alias-brand-primary,#2563eb)}
 .dshp-select{background:var(--dsw-alias-bg-layer-1,transparent);border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.4));border-radius:6px;padding:4px 6px;color:var(--dsw-alias-label-primary,#1f2328);font-size:13px}
 .dshp-list{display:flex;flex-direction:column;gap:6px;max-height:420px;overflow-y:auto}
+.dshp-group{display:flex;flex-direction:column;gap:4px}
+.dshp-group-head{display:flex;align-items:center;gap:6px;width:100%;text-align:left;background:transparent;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.25));border-radius:6px;padding:4px 8px;cursor:pointer;color:var(--dsw-alias-label-primary,#1f2328);font-size:12px;line-height:18px}
+.dshp-group-head:hover{background:var(--dsw-alias-bg-layer-2,rgba(128,128,128,.12))}
+.dshp-group-caret{flex:0 0 auto;color:var(--dsw-alias-label-secondary,#4b5563)}
+.dshp-group-name{font-weight:600}
+.dshp-group-count{color:var(--dsw-alias-label-secondary,#9ca3af)}
 .dshp-item{display:flex;flex-direction:column;gap:4px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.25));border-radius:8px;padding:8px 10px}
 .dshp-item-head{display:flex;align-items:center;gap:8px}
 .dshp-name{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary,#1f2328);flex:0 0 auto}
@@ -18,6 +24,8 @@ const CSS = `
 .dshp-tag-eco{background:color-mix(in srgb,var(--dsw-alias-state-success-primary,#16a34a) 14%,transparent);color:var(--dsw-alias-state-success-primary,#16a34a)}
 .dshp-tag-intro{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#d97706) 14%,transparent);color:var(--dsw-alias-state-warn-primary,#d97706)}
 .dshp-desc{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary,#4b5563)}
+.dshp-move{display:flex;align-items:center;gap:6px;margin-top:2px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary,#4b5563)}
+.dshp-move-new{flex:1;min-width:0}
 .dshp-actions{margin-left:auto;display:flex;align-items:center;gap:6px}
 .dshp-btn{font-size:12px;line-height:18px;padding:2px 10px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.4));background:transparent;color:var(--dsw-alias-label-primary,#1f2328);cursor:pointer}
 .dshp-btn:hover{background:var(--dsw-alias-bg-layer-2,rgba(128,128,128,.12))}
