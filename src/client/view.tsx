@@ -48,6 +48,7 @@ export function SkillPanelView(props: SkillPanelViewProps) {
   const [moveFor, setMoveFor] = useState<string | null>(null)
   const [moveGroup, setMoveGroup] = useState('')
   const [moveNew, setMoveNew] = useState('')
+  const [moveIsNew, setMoveIsNew] = useState(false)
 
   const refresh = (): void => {
     if (client === undefined) return
@@ -111,15 +112,22 @@ export function SkillPanelView(props: SkillPanelViewProps) {
     setMoveFor(entry.name)
     setMoveGroup(entry.group ?? '')
     setMoveNew('')
+    setMoveIsNew(false)
   }
 
   const closeMove = (): void => {
     setMoveFor(null)
+    setMoveIsNew(false)
   }
 
   const runMove = (name: string): void => {
     if (busy || client === undefined) return
-    const target = moveNew.trim().length > 0 ? moveNew.trim() : moveGroup
+    // 新建模式：以输入框内容为目标分组（空 = 未命名，拒绝）；否则用下拉选择。
+    const target = moveIsNew ? moveNew.trim() : moveGroup
+    if (moveIsNew && target === '') {
+      setNotice({ kind: 'error', text: t('group.move.needName') })
+      return
+    }
     setBusy(true)
     void client.moveSkill({ sessionId, name, ...(target === '' ? {} : { group: target }) }).then((result) => {
       setBusy(false)
@@ -247,22 +255,28 @@ export function SkillPanelView(props: SkillPanelViewProps) {
                             <span className="dshp-detail-label">{t('group.move.label')}：</span>
                             <select
                               className="dshp-select"
-                              value={moveNew.trim().length > 0 ? '__new__' : moveGroup}
+                              value={moveIsNew ? '__new__' : moveGroup}
                               onChange={event => {
                                 const value = event.target.value
-                                if (value === '__new__') { setMoveNew(' '); setMoveGroup('') }
-                                else { setMoveNew(''); setMoveGroup(value) }
+                                if (value === '__new__') {
+                                  setMoveIsNew(true)
+                                  setMoveNew('')
+                                } else {
+                                  setMoveIsNew(false)
+                                  setMoveNew('')
+                                  setMoveGroup(value)
+                                }
                               }}
                             >
                               <option value="">{t('group.move.none')}</option>
                               {existingGroups.map(g => <option key={g} value={g}>{g}</option>)}
                               <option value="__new__">{t('group.move.new')}</option>
                             </select>
-                            {moveNew.trim().length > 0 && (
+                            {moveIsNew && (
                               <input
                                 className="dshp-input dshp-move-new"
                                 placeholder={t('group.move.newPlaceholder')}
-                                value={moveNew.trim()}
+                                value={moveNew}
                                 onChange={event => setMoveNew(event.target.value)}
                               />
                             )}
