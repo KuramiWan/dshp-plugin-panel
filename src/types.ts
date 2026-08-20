@@ -226,3 +226,57 @@ export interface SkillPanelMcpCheckRequest {
 export type SkillPanelMcpCheckResult =
   | { readonly ok: true; readonly toolCount: number; readonly serverName: string }
   | { readonly ok: false; readonly reason: string }
+
+// ---- 插件页签（宿主组合层，ADR-0008；MCP 折叠并入） ----
+
+/** 组合行来源：core（bundle / host 核心）| patch（活动 profile 用户插件行）| mcp（mcp-client 桥接）。 */
+export type SkillPanelPluginSource = 'core' | 'patch' | 'mcp'
+
+/** 插件页签里的单个组合行视图。 */
+export interface SkillPanelPluginEntry {
+  readonly id: string
+  readonly source: SkillPanelPluginSource
+  /** FiberState 数值；-1 = 已停用（记录在状态文件、不在 registry）。 */
+  readonly state: number
+  readonly stateLabel: string
+  readonly active: boolean
+  readonly protected: boolean
+  readonly manageable: boolean
+  readonly isSelf: boolean
+  readonly packageName?: string
+  /** mcp 桥接行信息。 */
+  readonly mcp?: {
+    readonly serverName: string
+    readonly transport: 'stdio' | 'streamable-http'
+    readonly connected: boolean
+  }
+}
+
+export interface SkillPanelPluginListRequest {
+  readonly sessionId: string
+}
+
+export interface SkillPanelPluginListResult {
+  readonly plugins: readonly SkillPanelPluginEntry[]
+}
+
+export interface SkillPanelPluginToggleRequest {
+  readonly sessionId: string
+  readonly id: string
+  /** true = 启用（重建 insert 行）；false = 停用（移除 insert 行）。 */
+  readonly enabled: boolean
+}
+
+export type SkillPanelPluginToggleResult =
+  | { readonly ok: true; readonly id: string; readonly enabled: boolean }
+  | { readonly ok: false; readonly reason: string }
+
+export interface SkillPanelPluginInstallRequest {
+  readonly sessionId: string
+  readonly id: string
+  readonly name: string
+}
+
+export type SkillPanelPluginInstallResult =
+  | { readonly ok: true; readonly id: string }
+  | { readonly ok: false; readonly reason: string }

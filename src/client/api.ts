@@ -45,6 +45,12 @@ import type {
   SkillPanelMcpSelectResult,
   SkillPanelMcpCheckRequest,
   SkillPanelMcpCheckResult,
+  SkillPanelPluginListRequest,
+  SkillPanelPluginListResult,
+  SkillPanelPluginToggleRequest,
+  SkillPanelPluginToggleResult,
+  SkillPanelPluginInstallRequest,
+  SkillPanelPluginInstallResult,
 } from '../types.ts'
 
 /**
@@ -70,6 +76,9 @@ export interface SkillPanelClient {
   mcpDiscover(request: SkillPanelMcpDiscoverRequest): Promise<SkillPanelMcpDiscoverResult>
   mcpSelect(request: SkillPanelMcpSelectRequest): Promise<SkillPanelMcpSelectResult>
   mcpCheck(request: SkillPanelMcpCheckRequest): Promise<SkillPanelMcpCheckResult>
+  pluginList(request: SkillPanelPluginListRequest): Promise<SkillPanelPluginListResult>
+  pluginToggle(request: SkillPanelPluginToggleRequest): Promise<SkillPanelPluginToggleResult>
+  pluginInstall(request: SkillPanelPluginInstallRequest): Promise<SkillPanelPluginInstallResult>
 }
 
 /** POST 一个面板方法；HTTP 非 2xx 时抛出（优先取 body 的 reason）。 */
@@ -188,6 +197,21 @@ export function createSkillPanelClient(): SkillPanelClient {
         return (await post('mcpCheck', request)) as SkillPanelMcpCheckResult
       } catch (error) {
         return foldFail<SkillPanelMcpCheckResult>(error)
+      }
+    },
+    pluginList: request => post('pluginList', request) as Promise<SkillPanelPluginListResult>,
+    pluginToggle: async (request) => {
+      try {
+        return (await post('pluginToggle', request)) as SkillPanelPluginToggleResult
+      } catch (error) {
+        return foldFail<SkillPanelPluginToggleResult>(error)
+      }
+    },
+    pluginInstall: async (request) => {
+      try {
+        return (await post('pluginInstall', request)) as SkillPanelPluginInstallResult
+      } catch (error) {
+        return foldFail<SkillPanelPluginInstallResult>(error)
       }
     },
   }

@@ -16,6 +16,7 @@ import { applySessionSkillCommands } from './commands.ts'
 import { applySessionMcpTools } from './mcp-tools.ts'
 import { SkillPanelService } from './skill-panel-service.ts'
 import { SessionMcpManager } from './mcp-manager.ts'
+import { PluginManager } from './plugin-manager.ts'
 import { resolvePoolRoot } from './pool.ts'
 import { SessionSkillStore } from './handles.ts'
 import { replaySession } from './actions.ts'
@@ -53,11 +54,21 @@ export type {
   SkillPanelMcpSelectResult,
   SkillPanelMcpCheckRequest,
   SkillPanelMcpCheckResult,
+  SkillPanelPluginEntry,
+  SkillPanelPluginSource,
+  SkillPanelPluginListRequest,
+  SkillPanelPluginListResult,
+  SkillPanelPluginToggleRequest,
+  SkillPanelPluginToggleResult,
+  SkillPanelPluginInstallRequest,
+  SkillPanelPluginInstallResult,
 } from './types.ts'
 
 export interface SkillControlConfig {
   /** 池根目录；默认 ~/.dsh/.skill-pool */
   readonly poolRoot?: string
+  /** 插件管理的活动 profile 目录；默认自动探测（引用本面板的 profile，退回 web）。 */
+  readonly profileDir?: string
 }
 
 /** 纯 host 插件（服务/RPC + 工具 + 命令）：挂载后为所有会话提供三面管理入口，操作维度仍按会话。 */
@@ -67,15 +78,18 @@ export class SkillControlPlugin {
   // schemastery fork：object 字段默认即可选（.required() 才必填），故 poolRoot 不必写 optional
   static Config: z<SkillControlConfig> = z.object({
     poolRoot: z.string(),
+    profileDir: z.string(),
   })
 
   private readonly store: SessionSkillStore
   private readonly mcp: SessionMcpManager
+  private readonly plugins: PluginManager
 
   constructor(ctx: Context, config: SkillControlConfig = {}) {
     const poolRoot = resolvePoolRoot(config.poolRoot)
     this.store = new SessionSkillStore(poolRoot)
     this.mcp = new SessionMcpManager(ctx, poolRoot)
+    this.plugins = new PluginManager(ctx, this.mcp, config.profileDir)
     applySessionSkillTools(ctx, { poolRoot, store: this.store })
     applySessionSkillCommands(ctx, { poolRoot, store: this.store })
     applySessionMcpTools(ctx, { manager: this.mcp })
@@ -85,7 +99,7 @@ export class SkillControlPlugin {
       if (payload.source !== 'resume') return
       void replaySession(ctx, poolRoot, this.store, payload.agent)
     }), 'skill-panel: session introduce-set replay')
-    ctx.plugin(SkillPanelService, { poolRoot, store: this.store, mcp: this.mcp })
+    ctx.plugin(SkillPanelService, { poolRoot, store: this.store, mcp: this.mcp, plugins: this.plugins })
   }
 }
 

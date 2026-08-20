@@ -30,6 +30,7 @@ import {
 } from './actions.ts'
 import type { SessionSkillStore } from './handles.ts'
 import type { SessionMcpManager, McpServerTemplate } from './mcp-manager.ts'
+import type { PluginManager } from './plugin-manager.ts'
 import type {
   SkillPanelBrowseEntry,
   SkillPanelBrowseRequest,
@@ -66,6 +67,12 @@ import type {
   SkillPanelMcpSelectResult,
   SkillPanelMcpCheckRequest,
   SkillPanelMcpCheckResult,
+  SkillPanelPluginListRequest,
+  SkillPanelPluginListResult,
+  SkillPanelPluginToggleRequest,
+  SkillPanelPluginToggleResult,
+  SkillPanelPluginInstallRequest,
+  SkillPanelPluginInstallResult,
 } from './types.ts'
 
 export interface SkillPanelServiceOptions {
@@ -75,6 +82,8 @@ export interface SkillPanelServiceOptions {
   readonly store: SessionSkillStore
   /** 会话级临时 MCP 管理器。 */
   readonly mcp: SessionMcpManager
+  /** 插件管理器（宿主组合层；MCP 折叠并入）。 */
+  readonly plugins: PluginManager
 }
 
 /** 面板 host 服务：只读为主；写操作与命令/工具同路径。 */
@@ -88,12 +97,14 @@ export class SkillPanelService {
   private readonly poolRoot: string
   private readonly store: SessionSkillStore
   private readonly mcp: SessionMcpManager
+  private readonly plugins: PluginManager
 
   constructor(ctx: Context, options: SkillPanelServiceOptions) {
     this.ctx = ctx
     this.poolRoot = options.poolRoot
     this.store = options.store
     this.mcp = options.mcp
+    this.plugins = options.plugins
 
     ctx.effect(() => ctx.webServer.register({
       kind: 'prefix',
@@ -181,6 +192,15 @@ export class SkillPanelService {
           break
         case 'mcpCheck':
           result = await this.mcpCheck(payload as unknown as SkillPanelMcpCheckRequest)
+          break
+        case 'pluginList':
+          result = this.pluginList(payload as unknown as SkillPanelPluginListRequest)
+          break
+        case 'pluginToggle':
+          result = this.pluginToggle(payload as unknown as SkillPanelPluginToggleRequest)
+          break
+        case 'pluginInstall':
+          result = this.pluginInstall(payload as unknown as SkillPanelPluginInstallRequest)
           break
         default:
           this.send(res, 404, { ok: false, reason: `unknown method "${method}"` })
@@ -385,5 +405,40 @@ export class SkillPanelService {
     const result = await this.mcp.check(agent, request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
     return { ok: true, serverName: result.serverName, toolCount: result.toolCount }
+  }
+
+  /** 插件盘点（宿主组合层；MCP 折叠并入，标注会话连接状态）。 */
+  pluginList(request: SkillPanelPluginListRequest): SkillPanelPluginListResult {
+    const agent = this.agentOf(request.sessionId)
+    return { plugins: this.plugins.list(agent).map(p => ({
+      id: p.id,
+      source: p.source,
+      state: p.state,
+      stateLabel: p.stateLabel,
+      active: p.active,
+      protected: p.protected,
+      manageable: p.manageable,
+      isSelf: p.isSelf,
+      ...(p.packageName === undefined ? {} : { packageName: p.packageName }),
+      ...(p.mcp === undefined ? {} : { mcp: p.mcp }),
+    })) }
+  }
+
+  /** 启停一个用户插件行（写活动 profile cordis.patch.yml，热重载免重启）。 */
+  pluginToggle(request: SkillPanelPluginToggleRequest): SkillPanelPluginToggleResult {
+    this.agentOf(request.sessionId)
+    const result = request.enabled
+      ? this.plugins.enable(request.id)
+      : this.plugins.disable(request.id)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true, id: result.id, enabled: result.enabled }
+  }
+
+  /** 新增/启用一个用户插件（写一条 insert 行，id + 包名）。 */
+  pluginInstall(request: SkillPanelPluginInstallRequest): SkillPanelPluginInstallResult {
+    this.agentOf(request.sessionId)
+    const result = this.plugins.install(request.id, request.name)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true, id: result.id }
   }
 }
