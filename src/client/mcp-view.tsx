@@ -100,8 +100,12 @@ export function SkillPanelMcpView(props: SkillPanelMcpViewProps) {
     setChecking(name)
     void client.mcpCheck({ sessionId, name }).then((r) => {
       setChecking(null)
-      if (r.ok) setNotice({ kind: 'ok', text: `${t('mcp.check.ok')} ${r.toolCount}` })
-      else setNotice({ kind: 'error', text: `${t('mcp.notice.failed')}: ${r.reason}` })
+      if (r.ok) {
+        if (r.toolCount > 0) setNotice({ kind: 'ok', text: `${t('mcp.check.ok')} ${r.toolCount}` })
+        else setNotice({ kind: 'error', text: t('mcp.check.zero') })
+      } else {
+        setNotice({ kind: 'error', text: `${t('mcp.notice.failed')}: ${r.reason}` })
+      }
       refresh()
     }).catch((e) => { setChecking(null); setNotice({ kind: 'error', text: `${t('mcp.notice.failed')}: ${String(e)}` }) })
   }

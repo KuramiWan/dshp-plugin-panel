@@ -414,19 +414,28 @@ export class SessionMcpManager {
     if (template === undefined) return { ok: false, reason: `白名单没有 "${name}"` }
     const conn = await this.connect(agent, name)
     if (!conn.ok) return { ok: false, reason: conn.reason }
-    // 等 mcp-client 异步完成首轮工具发现。
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    // 等 mcp-client 异步完成首轮工具发现：最多 5s，发现即返回（npx 冷启动较慢）。
+    const deadline = Date.now() + 5000
     let toolCount = 0
-    try {
-      const tools = (agent.ctx.get as (k: string) => unknown).call(agent.ctx, 'tools') as { schemas?: (scope?: unknown) => { name?: string }[] } | undefined
-      const prefix = `mcp__${conn.serverName}__`
-      const schemas = tools?.schemas?.() ?? []
-      toolCount = schemas.filter(s => typeof s?.name === 'string' && s.name.startsWith(prefix)).length
-    } catch {
-      toolCount = 0
+    while (Date.now() < deadline) {
+      toolCount = this.countTools(agent, conn.serverName)
+      if (toolCount > 0) break
+      await new Promise(resolve => setTimeout(resolve, 500))
     }
     this.disconnect(agent, name)
     return { ok: true, serverName: conn.serverName, toolCount }
+  }
+
+  /** 数某 serverName 已注册的工具数（mcp__<serverName>__ 前缀）。 */
+  private countTools(agent: Agent, serverName: string): number {
+    try {
+      const tools = (agent.ctx.get as (k: string) => unknown).call(agent.ctx, 'tools') as { schemas?: (scope?: unknown) => { name?: string }[] } | undefined
+      const prefix = `mcp__${serverName}__`
+      const schemas = tools?.schemas?.() ?? []
+      return schemas.filter(s => typeof s?.name === 'string' && s.name.startsWith(prefix)).length
+    } catch {
+      return 0
+    }
   }
 
   /** 白名单模板 → mcp-client Config。 */
