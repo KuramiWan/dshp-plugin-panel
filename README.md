@@ -1,84 +1,126 @@
 # dshp-skill-panel
 
-**Session-scoped skill control for DeepSeek Harness (DSH).** Adds model tools
-(`session_skill_*`), slash commands (`/skill-*`) and a browser Skill Panel —
-three entrances over one shared, session-isolated skill store. The panel
-communicates over a DSH `webServer` HTTP route (relative-path `fetch`), so the
-package builds and installs independently of the DSH monorepo.
+[![npm](https://img.shields.io/npm/v/@super_camel/dsh-skill-panel?style=flat-square&color=5B4CF0)](https://www.npmjs.com/package/@super_camel/dsh-skill-panel)
+[![MIT](https://img.shields.io/badge/license-MIT-0B7285?style=flat-square)](LICENSE)
+[![DSH](https://img.shields.io/badge/DSH-Web-5B4CF0?style=flat-square)](cordis.patch.yml)
 
-DSHP 会话级 Skill 控制插件（**命令 + 工具 + 面板三入口**，共享同一会话隔离的 skill store）：
+**Session-level skill management for DeepSeek Harness — introduce and remove skills per session, with a convenient browser panel, model tools, and slash commands that all control the same skills.**
 
-- 5 个 `session_skill_*` **模型工具**（模型自主调用）：browse / search / list / introduce / remove
-- 5 个 `/skill-*` **斜杠命令**（人类直接调用，不经模型）：`/skill-browse [query]` `/skill-search <query>` `/skill-list` `/skill-introduce <name>` `/skill-remove <name>`
-- **技能面板（Skill Panel）**：浏览器加性 UI——设置页「技能面板」节（`settings.section`），「池 + 本会话已引入」两区；数据经 **DSH webServer HTTP 路由**（`POST /skill-panel/<method>`，相对路径 fetch，不依赖 typert/Remote）
-- 三面共享同一个 `SessionSkillStore` + `pool.ts` 只读层（幂等、会话隔离、影子覆盖语义一致；面板零新业务逻辑）
-- **会话引入集持久**：引入/移除落盘 `<poolRoot>/.session-skills/<sessionId>.json`，宿主重启后按会话自动恢复（对齐 MCP 白名单语义：池=候选集、引入=连接）
+🚀 Session-level management | Convenient panel | Panel, commands, and tools stay in sync | Install with one command
 
-## 数据源：用户自管池（User-Managed Pool）
+[Highlights](#highlights) | [Who it is for](#who-it-is-for) | [Quick start](#quick-start) | [Toolbox](#toolbox) | [How it works](#how-it-works) | [Troubleshooting](#troubleshooting) | [FAQ](#faq)
 
-- 池 `~/.dsh/.skill-pool/local/` 是**唯一内容源**：每个含 `SKILL.md` 的子目录即一份技能，**放文件 = 加入管理**；删除目录 = 移出管理。
-- 本仓库**不预置、不分发任何技能**；不做订阅/生态/目录缓存/信任确认（该概念已于 2026-08-19 移除）。
-- 官方层（`~/.dsh/skills`、`~/.agents/skills`、项目 `.dsh/skills`）是**进程级**、全会话可见 → 本插件**不管理、不展示**；你自放的全局技能由 DSH 原生 skill-filesystem 处理。
-- 引入 = **纯会话注册**：不复制文件，注册资源目录指回池内原目录；会话引入集持久化，重启后自动重放。
+🌐 **English** | [中文](README.zh.md)
 
-## 结构（src/）
+## Highlights
 
-- `index.ts` — 插件入口：`SkillControlPlugin`（默认导出类），`inject: ['agents','tools','skills','commands']`，`Config.poolRoot?`；构造时注册工具+命令（`ctx.effect`）+ 子服务 `SkillPanelService`（`ctx.plugin`）+ 订阅 `agent/session-start`（source=resume）重放会话引入集
-- `pool.ts` — 池读取层：`local/` 目录扫描 / SKILL.md frontmatter 解析（BOM 剥离）；`defaultPoolRoot` 遵循 DSH home 优先级（显式 `poolRoot` > `$DSH_HOME` > `~/.dsh`）
-- `handles.ts` — `SessionSkillStore`：按 agent+name 的引入句柄（WeakMap，不泄漏、不跨会话）+ 会话引入集磁盘落点（`.session-skills/<sessionId>.json`）
-- `actions.ts` — 三面共享核心动作：browse / filter / introduce / remove / replaySession
-- `tools.ts` — 5 个模型工具（`ctx.tools.register` + `ctx.effect`）
-- `commands.ts` — 5 个斜杠命令（`ctx.commands.register` + `ctx.effect`）
-- `skill-panel-service.ts` — `SkillPanelService`（`inject: ['agents','skills']`）：构造时经 `ctx.get('webServer').register({kind:'prefix', path:'/skill-panel'})` 注册 HTTP 路由（`ctx.effect` 回收），`dispatch` 分发 `browse/list/detail/introduce/removeSkill` 到 pool/store；不依赖 typert
-- `types.ts` — 面板边界载荷类型（纯序列化类型，host/client 共享）
-- `client/` — 浏览器半：`index.ts`（`createSkillPanelClient()` + 注册 `settings.section` 槽位）、`api.ts`（HTTP 客户端：相对路径 `fetch('/skill-panel/<method>')`，返回裸业务 JSON）、`view.tsx`（两区视图：池 + 本会话已引入，搜索/详情展开/影子标注）、`sections.tsx`、`locale.ts`（zh/en）、`styles.ts`（`--dsw-alias-*` 主题令牌）
+- **Session-level skill management.** Introduce and remove skills per session — each session keeps its own isolated set, shadow overrides stay local, and nothing leaks between sessions. The introduced set survives host restarts.
+- **A convenient management panel.** A browser settings section gives you a visual overview of your local skills and the current session's skills — search, expand details, and introduce or remove with a click.
+- **Everything stays in sync.** The panel, the `session_skill_*` model tools, and the `/skill-*` slash commands all control the same skills — introduce or remove a skill in one place and it shows up everywhere.
+- **Skills come from your own folder.** Skills live in your local folder (`~/.dsh/.skill-pool/local/`). Add a folder to manage a skill, delete it to remove it. This package ships no skills and does no subscription or catalog.
 
-## 开发 / 构建（Development）
+## Who it is for
 
-独立于 DSH monorepo 构建（peerDeps 从本包 node_modules 解析）：
+1. You want the model to discover and load skills on its own — the `session_skill_*` tools let it browse, search, introduce, and remove skills autonomously.
+2. You want to control skills directly from the chat — the `/skill-*` commands are for humans, no model in the loop.
+3. You want a visual overview — the Skill Panel shows your local skills and the current session's introduced skills in one settings section.
 
-```bash
-pnpm install
-pnpm typecheck    # 轻量类型检查（host + client，CI 同一门槛）
-pnpm build        # 产出 lib/index.js + lib/client.js
+## Quick start
+
+### 1. Install
+
+```sh
+dsh plugin --profile web add @super_camel/dsh-skill-panel
 ```
 
-- `tsconfig.host.json` / `tsconfig.client.json`：自包含类型检查配置，`@deepseek-ai/*` 从本包 node_modules 解析。
-- `build-client.mjs`：独立 bundle 脚本（`node build-client.mjs` → client；`--host` → host）。
-- 预构建的 `lib/` 随仓库提交（dsh-web-billing 同款），消费者安装即用，无需自行构建。
-- `cordis.patch.yml`：`dsh.bundle` 声明，安装时注入插件行。
+Or install from source:
 
-## 安装（Install）
-
-```bash
-# 从 npm（发布后）
-dsh plugin --profile web add @super_camel/dsh-skill-panel
-
-# 或直接从源码仓库
+```sh
 dsh plugin --profile web add github:kuramiwan/dshp-skill-panel
 ```
 
-装好后**重启 dsh web**。host 半注册工具/命令/HTTP 路由；client 半经 `dsh.client`
-声明被 browser roster 发现（设置页「技能面板」节）。
+### 2. Restart and check
 
-## 已知显示行为 / 边界
+Restart `dsh web`, then open **Settings → 技能面板 (Skill Panel)**. You should see two views: your local skills, and the skills introduced into the current session.
 
-- 空白新会话中命令结果节点可能不实时上屏（DSH 客户端有意不把 command 节点当会话内容），发一条消息或刷新后全部出现——建议在**有对话历史的会话**中使用命令。
-- 全局层（`~/.dsh/skills` 等）为进程级、不在面板/工具中展示；只管理池 `local/` 与会话引入集。
+### 3. Use it
 
-## 免责声明（Disclaimer）
+```text
+/skill-browse            # list your local skills
+/skill-search <query>    # search your local skills
+/skill-introduce <name>  # introduce a skill into this session
+/skill-list              # list this session's skills
+/skill-remove <name>     # remove a skill from this session
+```
 
-本插件是 **DeepSeek Harness 的个人性、非官方扩展**，与 DeepSeek / DSH 官方无从属
-或背书关系（这是社区 `dsh-plugin` 生态的一员）。技能（Skill）内容来自**你自己管理的
-本地池** `~/.dsh/.skill-pool/local/`——引入后按 `SKILL.md` 原文原样注册，
-**不对任何技能内容的正确性、安全性或后果负责**。使用即表示你了解 Skill 以本地目录为
-资源基座、按会话隔离执行；请仅管理你信任的技能源。
+Or just ask the model — it can call the `session_skill_*` tools itself.
 
-This plugin is an unofficial, personal extension of DeepSeek Harness and is not
-affiliated with or endorsed by DeepSeek / DSH. Skills come from your own
-self-managed local pool (`~/.dsh/.skill-pool/local/`); always review and trust
-sources before introducing them. Use at your own risk. Licensed under
-[MIT](LICENSE) — no warranty, no liability.
+## Toolbox
+
+### Model tools
+
+Called by the model itself:
+
+| Tool | What it does |
+| --- | --- |
+| `session_skill_browse` | List your local skills, with an optional query filter |
+| `session_skill_search` | Search your local skills by keyword |
+| `session_skill_list` | List the skills introduced into the current session |
+| `session_skill_introduce` | Introduce a local skill into the current session |
+| `session_skill_remove` | Remove a skill from the current session |
+
+### Slash commands
+
+Called by you, directly:
+
+| Command | What it does |
+| --- | --- |
+| `/skill-browse [query]` | List your local skills, with an optional query filter |
+| `/skill-search <query>` | Search your local skills by keyword |
+| `/skill-list` | List the skills introduced into the current session |
+| `/skill-introduce <name>` | Introduce a local skill into the current session |
+| `/skill-remove <name>` | Remove a skill from the current session |
+
+### Skill Panel
+
+A browser settings section with two views — your local skills and the current session's introduced skills — with search, detail expansion, and shadow-override badges.
+
+## How it works
+
+The panel, the model tools, and the slash commands all operate on the same session-isolated skill list. Skills are read from your local folder, and the per-session introduced set is saved to disk.
+
+```mermaid
+flowchart LR
+    Tools["Model tools<br/>session_skill_*"] --> Skills["Session skills<br/>isolated per session"]
+    Cmds["Slash commands<br/>/skill-*"] --> Skills
+    Panel["Skill Panel<br/>browser settings"] --> Skills
+    Skills --> Folder["Your local skill folder<br/>~/.dsh/.skill-pool/local/"]
+    Skills --> Set["Introduced set<br/>.session-skills/sessionId.json"]
+```
+
+Introducing a skill is a pure session registration — no files are copied; the registered resource points back at the original folder. Global skill layers (`~/.dsh/skills`, `~/.agents/skills`, project `.dsh/skills`) are process-level and visible to every session, so this plugin does not manage or display them.
+
+## Troubleshooting
+
+| Problem | What to do |
+| --- | --- |
+| Command results don't appear in a fresh empty session | The DSH client intentionally does not treat command nodes as conversation content. Send a message or refresh, or use commands in a session with existing history. |
+| A skill I placed in the local folder doesn't show up | Make sure it is a subdirectory of `~/.dsh/.skill-pool/local/` containing a `SKILL.md`. |
+| Global skills (`~/.dsh/skills`, etc.) don't appear | Those are process-level and not managed or displayed by this plugin; only the `local/` folder and the session introduced set are. |
+
+## FAQ
+
+**Does introducing a skill copy files?**
+
+No. Introduction is a pure session registration that points back at the original folder.
+
+**Are skills shared across sessions?**
+
+No. Introductions are per-session and isolated; shadow overrides are per-session only.
+
+**Does this package ship any skills?**
+
+No. It manages your own local folder only — no bundled skills, no subscription, no catalog.
 
 ## License
 
