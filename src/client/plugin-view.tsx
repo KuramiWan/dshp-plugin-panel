@@ -170,13 +170,18 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
                   <span className={sKey === 'active' ? 'dshp-tag dshp-tag-intro' : sKey === 'failed' ? 'dshp-tag dshp-tag-error' : 'dshp-tag'}>
                     {t(STATE_LABEL[sKey])}
                   </span>
-                  {p.packageName !== undefined && <span className="dshp-tag">{p.packageName}</span>}
-                  {p.protected && <span className="dshp-tag dshp-tag-eco">{t('plugin.badge.protected')}</span>}
-                  {p.mcp !== undefined && (
-                    <span className={p.mcp.connected ? 'dshp-tag dshp-tag-intro' : 'dshp-tag'}>
-                      {p.mcp.connected ? t('plugin.mcp.connected') : t('plugin.mcp.available')}
-                    </span>
+                  {p.mcp !== undefined ? (
+                    <>
+                      <span className="dshp-tag dshp-tag-eco">{p.mcp.serverName}</span>
+                      <span className="dshp-tag">{p.mcp.transport === 'stdio' ? t('mcp.transport.stdio') : t('mcp.transport.http')}</span>
+                      <span className={p.mcp.connected ? 'dshp-tag dshp-tag-intro' : 'dshp-tag'}>
+                        {p.mcp.connected ? t('plugin.mcp.connected') : t('plugin.mcp.available')}
+                      </span>
+                    </>
+                  ) : (
+                    p.packageName !== undefined && <span className="dshp-tag">{p.packageName}</span>
                   )}
+                  {p.protected && <span className="dshp-tag dshp-tag-eco">{t('plugin.badge.protected')}</span>}
                   <span className="dshp-actions">
                     {p.manageable && (p.active
                       ? <button className="dshp-btn dshp-btn-danger" onClick={() => runToggle(p, false)} disabled={busy}>{t('plugin.action.disable')}</button>
