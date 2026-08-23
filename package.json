@@ -29,6 +29,9 @@
     },
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build:host": "node build-client.mjs --host",
     "build:client": "node build-client.mjs",
