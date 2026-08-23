@@ -1,7 +1,7 @@
 {
   "name": "@kuramiwan/dsh-skill-panel",
   "description": "DSHP session-scoped skill control: session_skill_* model tools + /skill-* slash commands + browser Skill Panel over a webServer HTTP route (ADR-0007, three entrances)",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "author": "kuramiwan",
   "type": "module",
