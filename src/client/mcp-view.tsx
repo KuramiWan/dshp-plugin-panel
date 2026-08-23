@@ -34,6 +34,7 @@ export function SkillPanelMcpView(props: SkillPanelMcpViewProps) {
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice>(null)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   const refresh = (): void => {
     if (client === undefined) return
@@ -131,7 +132,14 @@ export function SkillPanelMcpView(props: SkillPanelMcpViewProps) {
         <div className={notice.kind === 'ok' ? 'dshp-notice' : 'dshp-notice dshp-notice-error'}>{notice.text}</div>
       )}
 
-      <div className="dshp-tips">{t('mcp.tips')}</div>
+      <div className="dshp-tips">{t('mcp.globalNote')}</div>
+
+      <div className="dshp-toolbar">
+        <button className="dshp-btn dshp-help" title={t('plugin.help')} onClick={() => setHelpOpen(o => !o)}>
+          {helpOpen ? '×' : '?'}
+        </button>
+      </div>
+      {helpOpen && <div className="dshp-tips">{t('mcp.tips')}</div>}
 
       <div className="dshp-section-title">{t('mcp.discover.title')}</div>
       {disc.length === 0 ? (
