@@ -57,6 +57,7 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
   const [installOpen, setInstallOpen] = useState(false)
   const [installId, setInstallId] = useState('')
   const [installName, setInstallName] = useState('')
+  const [coreOpen, setCoreOpen] = useState(false)
 
   const refresh = (): void => {
     if (client === undefined) return
@@ -116,8 +117,9 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
   }
 
   const list = plugins ?? []
-  const active = list.filter(p => p.active)
-  const stopped = list.filter(p => !p.active && !p.isSelf)
+  // 内核插件（source==='core'）单独摘出，不进管理列表，折叠成只读摘要。
+  const core = list.filter(p => p.source === 'core')
+  const managed = list.filter(p => p.source !== 'core')
 
   return (
     <div className="dshp-root">
@@ -154,11 +156,11 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
         </div>
       )}
 
-      {active.length === 0 && stopped.length === 0 ? (
+      {managed.length === 0 ? (
         <div className="dshp-empty">{t('plugin.inventory.empty')}</div>
       ) : (
         <div className="dshp-list">
-          {list.map(p => {
+          {managed.map(p => {
             const sKey = stateKey(p.state)
             return (
               <div className="dshp-item" key={`${p.id}:${p.state}`}>
@@ -180,6 +182,29 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
                       ? <button className="dshp-btn dshp-btn-danger" onClick={() => runToggle(p, false)} disabled={busy}>{t('plugin.action.disable')}</button>
                       : <button className="dshp-btn dshp-btn-primary" onClick={() => runToggle(p, true)} disabled={busy}>{t('plugin.action.enable')}</button>)}
                   </span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <button className="dshp-group-head" onClick={() => setCoreOpen(o => !o)}>
+        <span className="dshp-group-caret">{coreOpen ? '▾' : '▸'}</span>
+        <span className="dshp-group-name">{t('plugin.core.title')}</span>
+        <span className="dshp-group-count">（{core.length}）</span>
+      </button>
+      {coreOpen && (
+        <div className="dshp-list">
+          {core.map(p => {
+            const sKey = stateKey(p.state)
+            return (
+              <div className="dshp-item" key={`core:${p.id}`}>
+                <div className="dshp-item-head">
+                  <span className="dshp-name">{p.id}</span>
+                  <span className={sKey === 'active' ? 'dshp-tag dshp-tag-intro' : 'dshp-tag'}>{t(STATE_LABEL[sKey])}</span>
+                  {p.packageName !== undefined && <span className="dshp-tag">{p.packageName}</span>}
+                  <span className="dshp-tag dshp-tag-eco">{t('plugin.badge.protected')}</span>
                 </div>
               </div>
             )
