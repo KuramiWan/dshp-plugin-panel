@@ -1,6 +1,6 @@
 # dshp-skill-panel 的 bundle.patch（dsh.bundle 协议声明，安装时注入该行）。
-# 安装方式：`dsh plugin --profile web add @kuramiwan/dsh-skill-panel`（或 github:owner/repo）。
+# 安装方式：`dsh plugin --profile web add @super_camel/dsh-skill-panel`（或 github:owner/repo）。
 # 行名必须用包名（browser roster 只认包名；路径型行名会被缓存成"永久非 client 行"）。
 - insert:
     - id: dshp-skill-panel
-      name: '@kuramiwan/dsh-skill-panel'
+      name: '@super_camel/dsh-skill-panel'

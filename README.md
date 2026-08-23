@@ -52,7 +52,7 @@ pnpm build        # 产出 lib/index.js + lib/client.js
 
 ```bash
 # 从 npm（发布后）
-dsh plugin --profile web add @kuramiwan/dsh-skill-panel
+dsh plugin --profile web add @super_camel/dsh-skill-panel
 
 # 或直接从源码仓库
 dsh plugin --profile web add github:kuramiwan/dshp-skill-panel
@@ -82,4 +82,4 @@ sources before introducing them. Use at your own risk. Licensed under
 
 ## License
 
-[MIT](LICENSE) © 2026 kuramiwan
+[MIT](LICENSE) © 2026 super_camel

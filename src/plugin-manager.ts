@@ -31,7 +31,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionMcpManager } from './mcp-manager.ts'
 
 /** 面板自身包名与行 id（禁止停）。 */
-export const PANEL_PACKAGE = '@kuramiwan/dsh-skill-panel'
+export const PANEL_PACKAGE = '@super_camel/dsh-skill-panel'
 export const PANEL_ROW_ID = 'dshp-skill-panel'
 
 /** FiberState 中文标签（Cordis：PENDING=0 LOADING=1 ACTIVE=2 FAILED=3 DISPOSED=4 UNLOADING=5）。 */

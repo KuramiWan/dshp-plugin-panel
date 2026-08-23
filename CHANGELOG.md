@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added self-contained type-check configs (`tsconfig.host.json`,
   `tsconfig.client.json`) and a standalone bundle script
   (`build-client.mjs`), plus the `dsh.bundle` patch (`cordis.patch.yml`).
-- Added project governance: `LICENSE` (MIT, © 2026 kuramiwan),
+- Added project governance: `LICENSE` (MIT, © 2026 super_camel),
   `CONTRIBUTING.md`, CI (lightweight type-check), Keep-a-Changelog file.
 
 [Unreleased]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.1...HEAD

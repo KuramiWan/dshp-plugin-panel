@@ -54,4 +54,4 @@ in the same PR as the change.
 ## Licensing
 
 By contributing you agree that your contributions are licensed under the
-project's [MIT License](LICENSE) (© 2026 kuramiwan).
+project's [MIT License](LICENSE) (© 2026 super_camel).

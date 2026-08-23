@@ -9,7 +9,7 @@ import { defineConfig } from 'tsdown'
 const EXTERNALS = ['react', 'react/jsx-runtime', '@deepseek-ai/cordis']
 
 export default defineConfig({
-  name: '@kuramiwan/dsh-skill-panel/client',
+  name: '@super_camel/dsh-skill-panel/client',
   entry: { client: 'src/client/index.ts' },
   outDir: 'lib',
   format: 'cjs',
@@ -24,7 +24,7 @@ export default defineConfig({
   noExternal: (id: string) => (EXTERNALS.includes(id) ? undefined : true),
   outputOptions: {
     entryFileNames: 'client.js',
-    banner: 'window.__ModuleLoader__.load({ id: "@kuramiwan/dsh-skill-panel", factory: (require) => {',
+    banner: 'window.__ModuleLoader__.load({ id: "@super_camel/dsh-skill-panel", factory: (require) => {',
     footer: 'return module.exports; } });',
     intro: 'var module = { exports: {} }; var exports = module.exports;',
   },
