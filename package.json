@@ -5,6 +5,7 @@
   "license": "MIT",
   "author": "kuramiwan",
   "type": "module",
+  "packageManager": "pnpm@11.22.0",
   "files": [
     "lib/index.js",
     "lib/client.js",
@@ -31,11 +32,11 @@
   "scripts": {
     "build:host": "node build-client.mjs --host",
     "build:client": "node build-client.mjs",
-    "build": "npm run build:host && npm run build:client",
+    "build": "pnpm run build:host && pnpm run build:client",
     "typecheck:host": "tsc -p tsconfig.host.json --noEmit",
     "typecheck:client": "tsc -p tsconfig.client.json",
-    "typecheck": "npm run typecheck:host && npm run typecheck:client",
-    "prepublishOnly": "npm run typecheck"
+    "typecheck": "pnpm run typecheck:host && pnpm run typecheck:client",
+    "prepublishOnly": "pnpm run typecheck:host && pnpm run build"
   },
   "dsh": {
     "bundle": {
