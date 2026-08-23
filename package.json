@@ -4,6 +4,10 @@
   "version": "0.1.1",
   "license": "MIT",
   "author": "super_camel",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KuramiWan/dshp-skill-panel.git"
+  },
   "type": "module",
   "packageManager": "pnpm@11.22.0",
   "files": [
