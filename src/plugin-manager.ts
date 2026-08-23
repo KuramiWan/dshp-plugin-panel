@@ -147,8 +147,30 @@ export class PluginManager {
       && (c.transport === 'stdio' || c.transport === 'streamable-http')
   }
 
+  /** 面板自身 fiber 的 runtime 名（fiber.name 是插件类名，如 SkillControlPlugin）。 */
+  private selfFiberName(): string | undefined {
+    const name = (this.ctx.fiber as unknown as { name?: unknown })?.name
+    return typeof name === 'string' && name !== '' ? name : undefined
+  }
+
+  /** 面板自身 patch 行的 id（fiber.entry.id，如 dshp-skill-panel）。 */
+  private selfRowId(): string | undefined {
+    const id = (this.ctx.fiber as unknown as { entry?: { id?: unknown } })?.entry?.id
+    return typeof id === 'string' && id !== '' ? id : undefined
+  }
+
+  /** 面板自身的所有身份标识（fiber 名 / 行 id / 包名），用于 isSelf 与去重。 */
+  private selfNames(): Set<string> {
+    const names = new Set<string>([PANEL_ROW_ID, PANEL_PACKAGE])
+    const fiberName = this.selfFiberName()
+    if (fiberName !== undefined) names.add(fiberName)
+    const rowId = this.selfRowId()
+    if (rowId !== undefined) names.add(rowId)
+    return names
+  }
+
   private isSelf(id: string): boolean {
-    return id === PANEL_ROW_ID
+    return this.selfNames().has(id)
   }
 
   /**
@@ -171,13 +193,16 @@ export class PluginManager {
     const views: PluginFiberView[] = []
 
     for (const fiber of fibers) {
-      const id = typeof fiber.name === 'string' && fiber.name !== '' ? fiber.name : '(unnamed)'
+      const rawId = typeof fiber.name === 'string' && fiber.name !== '' ? fiber.name : '(unnamed)'
+      // 面板自身 fiber 的 runtime 名是类名（SkillControlPlugin），展示用行 id（dshp-skill-panel）。
+      const isSelfFiber = rawId === this.selfFiberName()
+      const id = isSelfFiber ? (this.selfRowId() ?? rawId) : rawId
       seenIds.add(id)
       const state = typeof fiber.state === 'number' ? fiber.state : 0
       const stateLabel = FIBER_LABELS[state] ?? `state:${state}`
       const isMcp = this.isMcpClientConfig(fiber.config)
-      const isSelf = this.isSelf(id)
-      const source: PluginSource = isMcp ? 'mcp' : (patchIds.has(id) ? 'patch' : 'core')
+      const isSelf = this.isSelf(id) || isSelfFiber
+      const source: PluginSource = isSelf ? 'patch' : (isMcp ? 'mcp' : (patchIds.has(id) ? 'patch' : 'core'))
       // patch 行可管理（非面板自身）；core/mcp 组合行不可在此启停（core 只读；mcp 走会话连接）。
       const manageable = source === 'patch' && !isSelf
       const protected_ = !manageable || isSelf
@@ -210,6 +235,7 @@ export class PluginManager {
     // 状态文件里记录了、但当前不在 registry 的规格 → 已停用的用户插件（供重新启用）。
     for (const spec of specs) {
       if (seenIds.has(spec.id)) continue
+      if (this.isSelf(spec.id)) continue // 面板自身行 id 不当作「已停用」
       views.push({
         id: spec.id,
         source: 'patch',
