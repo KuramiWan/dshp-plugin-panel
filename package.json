@@ -40,10 +40,11 @@
     "build:host": "node build-client.mjs --host",
     "build:client": "node build-client.mjs",
     "build": "pnpm run build:host && pnpm run build:client",
+    "check:name": "node scripts/check-name.mjs",
     "typecheck:host": "tsc -p tsconfig.host.json --noEmit",
     "typecheck:client": "tsc -p tsconfig.client.json",
     "typecheck": "pnpm run typecheck:host && pnpm run typecheck:client",
-    "prepublishOnly": "pnpm run typecheck:host && pnpm run build"
+    "prepublishOnly": "pnpm run check:name && pnpm run typecheck:host && pnpm run build"
   },
   "dsh": {
     "bundle": {

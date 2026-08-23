@@ -1,4 +1,6 @@
 import { defineConfig } from 'tsdown'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 /**
  * 技能面板 client bundle（ADR-0007）：产出 lib/client.js ——
@@ -8,8 +10,14 @@ import { defineConfig } from 'tsdown'
  */
 const EXTERNALS = ['react', 'react/jsx-runtime', '@deepseek-ai/cordis']
 
+// bundle 注册 id 必须等于 package.json 的 name：DSH client-modules 按挂载名校验注册名，
+// 二者不一致会报 "loaded without registering" 并阻塞整个 DSH 启动。从 package.json 派生，
+// 杜绝改名时 banner 漂移。依赖 build-client.mjs 以 cwd=包根 启动 tsdown（process.cwd() 即包根）。
+const pkg = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'))
+const id = pkg.name
+
 export default defineConfig({
-  name: '@super_camel/dsh-skill-panel/client',
+  name: `${id}/client`,
   entry: { client: 'src/client/index.ts' },
   outDir: 'lib',
   format: 'cjs',
@@ -24,7 +32,7 @@ export default defineConfig({
   noExternal: (id: string) => (EXTERNALS.includes(id) ? undefined : true),
   outputOptions: {
     entryFileNames: 'client.js',
-    banner: 'window.__ModuleLoader__.load({ id: "@super_camel/dsh-skill-panel", factory: (require) => {',
+    banner: `window.__ModuleLoader__.load({ id: "${id}", factory: (require) => {`,
     footer: 'return module.exports; } });',
     intro: 'var module = { exports: {} }; var exports = module.exports;',
   },

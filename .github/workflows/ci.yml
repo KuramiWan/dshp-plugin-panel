@@ -22,5 +22,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check package name consistency
+        run: pnpm check:name
+
       - name: Type-check host + build
         run: pnpm typecheck:host && pnpm build

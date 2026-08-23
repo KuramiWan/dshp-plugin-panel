@@ -81,11 +81,21 @@ export class SkillControlPlugin {
     profileDir: z.string(),
   })
 
-  private readonly store: SessionSkillStore
-  private readonly mcp: SessionMcpManager
-  private readonly plugins: PluginManager
+  private store!: SessionSkillStore
+  private mcp!: SessionMcpManager
+  private plugins!: PluginManager
 
   constructor(ctx: Context, config: SkillControlConfig = {}) {
+    try {
+      this.init(ctx, config)
+    } catch (error) {
+      // 初始化失败不抛错：让 fiber 保持 active，避免一个插件 bug 阻塞整个 DSH 启动。
+      // 失败时插件静默降级（不注册工具/命令/面板），DSH 其余部分照常运行。
+      console.error('[dshp-skill-panel] initialization failed; plugin disabled:', error)
+    }
+  }
+
+  private init(ctx: Context, config: SkillControlConfig): void {
     const poolRoot = resolvePoolRoot(config.poolRoot)
     this.store = new SessionSkillStore(poolRoot)
     this.mcp = new SessionMcpManager(ctx, poolRoot)
