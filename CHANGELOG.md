@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-24
+
+### Fixed
+- Ship `cordis.patch.yml` in the npm package (it was missing from `files`, so DSH boot failed with ENOENT when reading `dsh.bundle.patch`).
+- Harden the plugin against blocking DSH startup: derive the client bundle registration id from `package.json` name, and wrap the host apply in try/catch so an init failure degrades instead of throwing.
+
 ## [0.1.1] - 2026-08-23
 
 ### Added
@@ -40,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added project governance: `LICENSE` (MIT, © 2026 super_camel),
   `CONTRIBUTING.md`, CI (lightweight type-check), Keep-a-Changelog file.
 
-[Unreleased]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/kuramiwan/dshp-skill-panel/releases/tag/v0.1.0
