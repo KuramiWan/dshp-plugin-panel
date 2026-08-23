@@ -406,30 +406,21 @@ export class SessionMcpManager {
   }
 
   /**
-   * 兼容检查（发现与兼容）：真实连一次该 server，拉工具清单，报工具数；随后自动断开。
-   * 把 mcp-client 默认 failOnStartupError:false 会"静默进重试、无工具也不报错"的坑显式化。
+   * 兼容检查（发现与兼容）：数**全局实例**（模型实际使用的那个）在 host 工具注册表里
+   * 已注册的工具数。不再另起会话实例——那会与全局实例抢连接、且并非模型所用，导致误报 0 工具。
    */
-  async check(agent: Agent, name: string): Promise<{ ok: true; serverName: string; toolCount: number } | { ok: false; reason: string }> {
+  async check(_agent: Agent, name: string): Promise<{ ok: true; serverName: string; toolCount: number } | { ok: false; reason: string }> {
     const template = this.cached.find(s => s.name === name)
     if (template === undefined) return { ok: false, reason: `白名单没有 "${name}"` }
-    const conn = await this.connect(agent, name)
-    if (!conn.ok) return { ok: false, reason: conn.reason }
-    // 等 mcp-client 异步完成首轮工具发现：最多 5s，发现即返回（npx 冷启动较慢）。
-    const deadline = Date.now() + 5000
-    let toolCount = 0
-    while (Date.now() < deadline) {
-      toolCount = this.countTools(agent, conn.serverName)
-      if (toolCount > 0) break
-      await new Promise(resolve => setTimeout(resolve, 500))
-    }
-    this.disconnect(agent, name)
-    return { ok: true, serverName: conn.serverName, toolCount }
+    // 选中条目 name == 全局 serverName；数 host 工具注册表里 mcp__<serverName>__ 前缀的工具。
+    const toolCount = this.countGlobalTools(template.name)
+    return { ok: true, serverName: template.name, toolCount }
   }
 
-  /** 数某 serverName 已注册的工具数（mcp__<serverName>__ 前缀）。 */
-  private countTools(agent: Agent, serverName: string): number {
+  /** 数全局实例已注册的工具数（mcp__<serverName>__ 前缀，host 工具注册表）。 */
+  private countGlobalTools(serverName: string): number {
     try {
-      const tools = (agent.ctx.get as (k: string) => unknown).call(agent.ctx, 'tools') as { schemas?: (scope?: unknown) => { name?: string }[] } | undefined
+      const tools = (this.context.get as (k: string) => unknown).call(this.context, 'tools') as { schemas?: (scope?: unknown) => { name?: string }[] } | undefined
       const prefix = `mcp__${serverName}__`
       const schemas = tools?.schemas?.() ?? []
       return schemas.filter(s => typeof s?.name === 'string' && s.name.startsWith(prefix)).length
