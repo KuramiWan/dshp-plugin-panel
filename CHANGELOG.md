@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-24
+
+### Added
+- MCP is now managed as a plugin: enable = connect to the current session, disable = disconnect. "加入管理/取消管理" (manage/unmanage) replaces "新增 MCP/删除".
+- Bundle→patch promote: convert a bundle plugin to a hot-pluggable patch plugin, with an in-place `dsh.bundle` rewrite so DSH stops re-adding it to `dsh.profile.bundles`.
+- Bundle plugins are now manageable (cold-mount enable/disable via `dsh.profile.bundles`).
+- MCP select/deselect symmetry: selecting an MCP disables its global instance and moves it to session-level; deselecting restores the global instance.
+
+### Changed
+- The plugin tab now has its own subtitle (four groups: built-in / patch / bundle / MCP) instead of reusing the skill tab's.
+- README and package description updated to cover plugin management.
+
+### Fixed
+- Deduplicated built-in plugins (the same plugin class mounted in multiple contexts appeared many times).
+- Fixed skill-tab group collapse state leaking across scopes (same-named groups in different scopes toggled together).
+
 ## [0.1.2] - 2026-08-24
 
 ### Fixed
@@ -46,7 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added project governance: `LICENSE` (MIT, © 2026 super_camel),
   `CONTRIBUTING.md`, CI (lightweight type-check), Keep-a-Changelog file.
 
-[Unreleased]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/kuramiwan/dshp-skill-panel/releases/tag/v0.1.0
