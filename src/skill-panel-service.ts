@@ -75,6 +75,8 @@ import type {
   SkillPanelPluginInstallResult,
   SkillPanelPluginPromoteRequest,
   SkillPanelPluginPromoteResult,
+  SkillPanelSessionsRequest,
+  SkillPanelSessionsResult,
 } from './types.ts'
 
 export interface SkillPanelServiceOptions {
@@ -206,6 +208,9 @@ export class SkillPanelService {
           break
         case 'pluginPromote':
           result = this.pluginPromote(payload as unknown as SkillPanelPluginPromoteRequest)
+          break
+        case 'sessions':
+          result = this.sessions(payload as unknown as SkillPanelSessionsRequest)
           break
         default:
           this.send(res, 404, { ok: false, reason: `unknown method "${method}"` })
@@ -453,5 +458,25 @@ export class SkillPanelService {
     const result = this.plugins.promoteToPatch(request.id)
     if (!result.ok) return { ok: false, reason: result.reason }
     return { ok: true, id: result.id, restartRequired: result.restartRequired }
+  }
+
+  /**
+   * 枚举宿主当前 live sessions（ADR-0010 卡点打通）。
+   * 调试器/外部调用者先调此方法拿到 live session id，才能用 agentOf 驱动的其它方法。
+   * 不要求 caller 预先知道 sessionId——枚举本身就是「不知道 id 才需要」。
+   * 用 ctx.agents.list()（所有 live agents）+ roots()（顶层标记），不落盘、只读。
+   */
+  sessions(request: SkillPanelSessionsRequest): SkillPanelSessionsResult {
+    const roots = new Set(this.ctx.agents.roots().map(a => a.id))
+    const all = this.ctx.agents.list().map(a => ({
+      sessionId: String(a.id),
+      status: a.status,
+      root: roots.has(a.id),
+    }))
+    const want = request.sessionId
+    const sessions = want === undefined || want === ''
+      ? all
+      : all.filter(s => s.sessionId === want)
+    return { sessions }
   }
 }

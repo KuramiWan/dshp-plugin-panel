@@ -27,7 +27,7 @@ interface Captured {
   path: string
 }
 
-function makeService(poolRoot: string, liveSessions: string[]) {
+function makeService(poolRoot: string, liveSessions: string[], roots: string[] = []) {
   const captured: Captured = { handler: async () => {}, kind: '', path: '' }
   const store = new SessionSkillStore(poolRoot)
   const mcp = { views: () => [], whitelist: () => [] } as unknown as SessionMcpManager
@@ -43,7 +43,9 @@ function makeService(poolRoot: string, liveSessions: string[]) {
       },
     },
     agents: {
-      get: (id: string) => (liveSessions.includes(id) ? { id } : undefined),
+      get: (id: string) => (liveSessions.includes(id) ? { id, status: 'idle' } : undefined),
+      list: () => liveSessions.map(id => ({ id, status: 'idle' })),
+      roots: () => roots.map(id => ({ id, status: 'idle' })),
     },
     skills: { list: async () => [] },
   }
@@ -160,6 +162,38 @@ test('方法分派: browse 命中并返回 200 JSON entries', async () => {
     const data = JSON.parse(body) as { entries: unknown }
     assert.ok(Array.isArray(data.entries))
     assert.equal((data.entries as Array<{ name: string }>)[0].name, 'git')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('sessions: 枚举所有 live sessions（含 root 标记），不要求 caller 预先知道 id', async () => {
+  const root = mkdtempSync(join(testRoot, 'svc-'))
+  try {
+    const { captured } = makeService(root, ['sess-a', 'sess-b'], ['sess-a']) // sess-a 是 root，sess-b 是子代理
+    const { status, body } = await send(captured, makeReq('POST', '/skill-panel/sessions', '{}'))
+    assert.equal(status, 200)
+    const data = JSON.parse(body) as { sessions: Array<{ sessionId: string; status: string; root: boolean }> }
+    assert.equal(data.sessions.length, 2)
+    const byId = new Map(data.sessions.map(s => [s.sessionId, s]))
+    assert.equal(byId.get('sess-a')?.root, true)
+    assert.equal(byId.get('sess-b')?.root, false)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('sessions: 传 sessionId 时只返回该会话（用于确认某 id 是否 live）', async () => {
+  const root = mkdtempSync(join(testRoot, 'svc-'))
+  try {
+    const { captured } = makeService(root, ['sess-a', 'sess-b'], ['sess-a'])
+    const { status, body } = await send(captured, makeReq('POST', '/skill-panel/sessions', JSON.stringify({ sessionId: 'sess-b' })))
+    assert.equal(status, 200)
+    const data = JSON.parse(body) as { sessions: Array<{ sessionId: string }> }
+    assert.deepEqual(data.sessions.map(s => s.sessionId), ['sess-b'])
+    // 未知 id → 空列表（确认该 id 非 live）
+    const empty = JSON.parse((await send(captured, makeReq('POST', '/skill-panel/sessions', JSON.stringify({ sessionId: 'ghost' })))).body) as { sessions: unknown[] }
+    assert.equal(empty.sessions.length, 0)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

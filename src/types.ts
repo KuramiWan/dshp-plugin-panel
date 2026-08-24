@@ -290,3 +290,25 @@ export interface SkillPanelPluginPromoteRequest {
 export type SkillPanelPluginPromoteResult =
   | { readonly ok: true; readonly id: string; readonly restartRequired: true }
   | { readonly ok: false; readonly reason: string }
+
+// ---- 调试 / 枚举（ADR-0010 卡点打通）：列出宿主当前 live sessions ----
+
+/** 单个 live agent/session 的视图。 */
+export interface SkillPanelSessionEntry {
+  /** agent/session 共享身份（= agent.id = session.id，供其它方法作 sessionId）。 */
+  readonly sessionId: string
+  /** AgentStatus：'idle' | 'running'。 */
+  readonly status: string
+  /** 是否顶层 agent（非子代理）。 */
+  readonly root: boolean
+}
+
+export interface SkillPanelSessionsRequest {
+  /** 可选：仅返回此 id 对应的条目（用于确认某会话是否 live）。 */
+  readonly sessionId?: string
+}
+
+export interface SkillPanelSessionsResult {
+  readonly sessions: readonly SkillPanelSessionEntry[]
+}
+
