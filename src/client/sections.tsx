@@ -23,7 +23,7 @@ export function SkillPanelSettingsSection(props: SkillPanelSettingsSectionProps)
   return (
     <div className="dshp-page">
       <div className="dshp-title">{t('page.title')}</div>
-      <div className="dshp-subtitle">{t('page.subtitle')}</div>
+      <div className="dshp-subtitle">{tab === 'skills' ? t('page.subtitle') : t('plugin.subtitle')}</div>
       <div className="dshp-tabs">
         <button
           className={tab === 'skills' ? 'dshp-tab dshp-tab-active' : 'dshp-tab'}
