@@ -17,8 +17,9 @@
  */
 
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { load as parseYaml, dump as stringifyYaml } from 'js-yaml'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { apply as mcpApply, inject as mcpInject, Config as McpConfig } from '@deepseek-ai/dsh-mcp-client'
 import type { Context } from '@deepseek-ai/cordis'
@@ -82,6 +83,21 @@ interface Connection {
 }
 
 const WHITELIST_FILE = '.mcp-whitelist.json'
+/** 已禁用全局 MCP 的原始行 sidecar（select 时存、deselect 时取回）。 */
+const DISABLED_FILE = '.mcp-disabled.json'
+
+/** home 级 patch 的一行（mcp-client 桥接行，含完整 config）。 */
+interface HomePatchRow {
+  id?: unknown
+  name?: unknown
+  config?: unknown
+}
+
+/** home 级 patch 的顶层选项（一个 `- ...` 项）。 */
+interface HomePatchOption {
+  insert?: HomePatchRow[]
+  [key: string]: unknown
+}
 
 /** serverName 合法字符段（与 mcp-client SERVER_NAME_PATTERN 对齐）。 */
 const SERVER_NAME_PREFIX = 'dshp'
@@ -94,6 +110,8 @@ export class SessionMcpManager {
   private readonly context: Context
   /** 白名单存储目录（poolRoot）。 */
   private readonly whitelistFile: string
+  /** 已禁用全局 MCP 原始行 sidecar（poolRoot）。 */
+  private readonly disabledFile: string
   /** agent → (whitelistName → Connection)。 */
   private readonly connections = new WeakMap<Agent, Map<string, Connection>>()
   /** 每个白名单名当前被多少 agent 连接（便于 removeTemplate 检查，WeakMap 不可枚举）。 */
@@ -112,6 +130,7 @@ export class SessionMcpManager {
   constructor(ctx: Context, root: string) {
     this.context = ctx
     this.whitelistFile = join(root, WHITELIST_FILE)
+    this.disabledFile = join(root, DISABLED_FILE)
     this.cached = this.readFile()
   }
 
@@ -241,8 +260,14 @@ export class SessionMcpManager {
   select(name: string): { ok: true; entry: McpDiscoveredView } | { ok: false; reason: string } {
     const template = this.discoveredTemplates().find(t => t.name === name)
     if (template === undefined) return { ok: false, reason: `组合中未发现已配置的 MCP "${name}"` }
+    // 先禁用全局（移到会话级），再入白名单；白名单失败则回滚恢复全局。
+    const disabled = this.disableGlobalMcp(name)
+    if (!disabled.ok) return { ok: false, reason: disabled.reason }
     const saved = this.upsertTemplate(template)
-    if (!saved.ok) return { ok: false, reason: saved.reason }
+    if (!saved.ok) {
+      void this.restoreGlobalMcp(name)
+      return { ok: false, reason: saved.reason }
+    }
     const hasSecrets = (template.env !== undefined && Object.keys(template.env).length > 0)
       || (template.headers !== undefined && Object.keys(template.headers).length > 0)
     const managed = new Set(this.cached.map(s => s.name))
@@ -306,6 +331,128 @@ export class SessionMcpManager {
     if (idx < 0) return { ok: false, reason: `whitelist has no "${name}"` }
     this.cached.splice(idx, 1)
     this.persist()
+    // deselect 对称：恢复全局连接。
+    const restored = this.restoreGlobalMcp(name)
+    if (!restored.ok) {
+      console.error(`[dshp-skill-panel] restore global MCP "${name}" failed: ${restored.reason}`)
+    }
+    return { ok: true }
+  }
+
+  // ---- 全局 MCP 启停（home 级 patch，select/deselect 对称） ----
+
+  /** home 级 patch 路径（$DSH_HOME/cordis.patch.yml，跨 profile 共享）。 */
+  private homePatchFile(): string {
+    const home = process.env.DSH_HOME ?? join(process.env.USERPROFILE ?? '.', '.dsh')
+    return join(home, 'cordis.patch.yml')
+  }
+
+  /** 读 home 级 patch 为顶层选项数组（非法/空 → 空数组）。 */
+  private readHomePatchOptions(): HomePatchOption[] {
+    const file = this.homePatchFile()
+    if (!existsSync(file)) return []
+    try {
+      const text = readFileSync(file, 'utf8').replace(/^\uFEFF/, '')
+      const parsed = parseYaml(text) as unknown
+      if (Array.isArray(parsed)) return parsed as HomePatchOption[]
+      return []
+    } catch {
+      return []
+    }
+  }
+
+  /** 写回 home 级 patch：备份 + 解析校验 + 原子写。 */
+  private writeHomePatchOptions(options: HomePatchOption[]): { ok: true } | { ok: false; reason: string } {
+    const file = this.homePatchFile()
+    let nextText: string
+    try {
+      nextText = stringifyYaml(options, { noRefs: true, lineWidth: 120 })
+    } catch (error) {
+      return { ok: false, reason: `serialize home patch failed: ${error instanceof Error ? error.message : String(error)}` }
+    }
+    try {
+      const reparsed = parseYaml(nextText)
+      if (!Array.isArray(reparsed)) return { ok: false, reason: 'generated home patch is not a top-level array' }
+    } catch (error) {
+      return { ok: false, reason: `generated home patch failed to parse: ${error instanceof Error ? error.message : String(error)}` }
+    }
+    try {
+      if (existsSync(file)) writeFileSync(file + '.bak', readFileSync(file, 'utf8'), 'utf8')
+      const tmp = file + '.tmp'
+      writeFileSync(tmp, nextText, 'utf8')
+      renameSync(tmp, file)
+    } catch (error) {
+      return { ok: false, reason: `write home patch failed: ${error instanceof Error ? error.message : String(error)}` }
+    }
+    return { ok: true }
+  }
+
+  /** 读已禁用全局 MCP 的原始行（sidecar，供恢复）。 */
+  private readDisabledRows(): Record<string, HomePatchRow> {
+    if (!existsSync(this.disabledFile)) return {}
+    try {
+      const text = readFileSync(this.disabledFile, 'utf8').replace(/^\uFEFF/, '')
+      const data = JSON.parse(text) as Record<string, HomePatchRow>
+      return typeof data === 'object' && data !== null ? data : {}
+    } catch {
+      return {}
+    }
+  }
+
+  /** 写已禁用全局 MCP 的原始行（sidecar）。 */
+  private writeDisabledRows(rows: Record<string, HomePatchRow>): void {
+    try {
+      mkdirSync(dirname(this.disabledFile), { recursive: true })
+      writeFileSync(this.disabledFile, JSON.stringify(rows, null, 2), 'utf8')
+    } catch {
+      // sidecar 写失败不阻断（只是恢复全局时可能缺原始行）。
+    }
+  }
+
+  /** 禁用全局 MCP：从 home 级 patch 移除该 serverName 的行，原始行存 sidecar。 */
+  private disableGlobalMcp(serverName: string): { ok: true } | { ok: false; reason: string } {
+    const options = this.readHomePatchOptions()
+    let removed: HomePatchRow | undefined
+    const next: HomePatchOption[] = options.map(opt => {
+      if (opt === null || typeof opt !== 'object' || !Array.isArray(opt.insert)) return opt
+      const insert = opt.insert.filter(row => {
+        const cfg = (row as { config?: unknown })?.config as { serverName?: unknown } | undefined
+        const isTarget = typeof cfg?.serverName === 'string' && cfg.serverName === serverName
+        if (isTarget) removed = row
+        return !isTarget
+      })
+      return { ...opt, insert }
+    })
+    if (removed === undefined) return { ok: true } // 无全局行，no-op
+    const result = this.writeHomePatchOptions(next)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    const disabled = this.readDisabledRows()
+    disabled[serverName] = removed
+    this.writeDisabledRows(disabled)
+    return { ok: true }
+  }
+
+  /** 恢复全局 MCP：从 sidecar 取原始行，加回 home 级 patch。 */
+  private restoreGlobalMcp(serverName: string): { ok: true } | { ok: false; reason: string } {
+    const disabled = this.readDisabledRows()
+    const row = disabled[serverName]
+    if (row === undefined) return { ok: true } // 无 sidecar 记录，no-op
+    const options = this.readHomePatchOptions()
+    let insertOpt = options.find(opt => opt !== null && typeof opt === 'object' && Array.isArray(opt.insert))
+    if (insertOpt === undefined) {
+      insertOpt = { insert: [] }
+      options.push(insertOpt)
+    }
+    const insert = insertOpt.insert as HomePatchRow[]
+    const already = insert.some(r => {
+      const cfg = (r as { config?: unknown })?.config as { serverName?: unknown } | undefined
+      return typeof cfg?.serverName === 'string' && cfg.serverName === serverName
+    })
+    if (!already) insert.push(row)
+    const result = this.writeHomePatchOptions(options)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    delete disabled[serverName]
+    this.writeDisabledRows(disabled)
     return { ok: true }
   }
 

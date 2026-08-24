@@ -230,7 +230,7 @@ export type SkillPanelMcpCheckResult =
 // ---- 插件页签（宿主组合层，ADR-0008；MCP 折叠并入） ----
 
 /** 组合行来源：core（bundle / host 核心）| patch（活动 profile 用户插件行）| mcp（mcp-client 桥接）。 */
-export type SkillPanelPluginSource = 'core' | 'patch' | 'mcp'
+export type SkillPanelPluginSource = 'core' | 'patch' | 'bundle' | 'mcp'
 
 /** 插件页签里的单个组合行视图。 */
 export interface SkillPanelPluginEntry {

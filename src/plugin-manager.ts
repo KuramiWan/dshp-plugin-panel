@@ -38,7 +38,7 @@ export const PANEL_ROW_ID = 'dshp-skill-panel'
 export const FIBER_LABELS = ['pending', 'loading', 'active', 'failed', 'disposed', 'unloading'] as const
 
 /** 组合行来源：core（bundle / host 核心）| patch（活动 profile 用户插件行）| mcp（mcp-client 桥接）。 */
-export type PluginSource = 'core' | 'patch' | 'mcp'
+export type PluginSource = 'core' | 'patch' | 'bundle' | 'mcp'
 
 /** 面板可见的单个组合行视图。 */
 export interface PluginFiberView {
@@ -183,6 +183,8 @@ export class PluginManager {
     const patchRows = this.readPatchRows()
     const patchIds = new Set(patchRows.map(r => String(r.id)))
     const specs = this.readSpecs()
+    const bundleNames = this.readBundleNames()
+    const userBundleNames = new Set(bundleNames.filter(n => !n.startsWith('@deepseek-ai/')))
     const connected = new Set<string>()
     if (agent !== undefined) {
       for (const n of this.mcp.connectedNames(agent)) connected.add(n)
@@ -202,8 +204,11 @@ export class PluginManager {
       const stateLabel = FIBER_LABELS[state] ?? `state:${state}`
       const isMcp = this.isMcpClientConfig(fiber.config)
       const isSelf = this.isSelf(id) || isSelfFiber
-      const source: PluginSource = isSelf ? 'patch' : (isMcp ? 'mcp' : (patchIds.has(id) ? 'patch' : 'core'))
-      // patch 行可管理（非面板自身）；core/mcp 组合行不可在此启停（core 只读；mcp 走会话连接）。
+      const packageName = patchRows.find(r => String(r.id) === id)?.name
+        ?? specs.find(s => s.id === id)?.name
+      const isUserBundle = typeof packageName === 'string' && userBundleNames.has(packageName)
+      const source: PluginSource = isSelf ? 'patch' : (isMcp ? 'mcp' : (patchIds.has(id) ? 'patch' : (isUserBundle ? 'bundle' : 'core')))
+      // patch 行可管理（非面板自身）；core/mcp/bundle 组合行不可在此启停（core 只读；mcp 走会话连接；bundle 走冷挂载）。
       const manageable = source === 'patch' && !isSelf
       const protected_ = !manageable || isSelf
 
@@ -214,7 +219,6 @@ export class PluginManager {
         serverName = cfg.serverName
         transport = cfg.transport
       }
-      const packageName = patchRows.find(r => String(r.id) === id)?.name
 
       views.push({
         id,
@@ -285,6 +289,19 @@ export class PluginManager {
       }
     }
     return rows
+  }
+
+  /** 读活动 profile 的 dsh.profile.bundles（package.json），区分核心 bundle 与用户 bundle。 */
+  private readBundleNames(): string[] {
+    const pkgFile = join(this.profileDir, 'package.json')
+    if (!existsSync(pkgFile)) return []
+    try {
+      const pkg = JSON.parse(readFileSync(pkgFile, 'utf8')) as { dsh?: { profile?: { bundles?: unknown } } }
+      const bundles = pkg?.dsh?.profile?.bundles
+      return Array.isArray(bundles) ? bundles.filter((b): b is string => typeof b === 'string') : []
+    } catch {
+      return []
+    }
   }
 
   /**

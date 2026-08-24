@@ -24,6 +24,7 @@ type Notice = { kind: 'ok' | 'error'; text: string } | null
 const SOURCE_LABEL = {
   core: 'plugin.source.core',
   patch: 'plugin.source.patch',
+  bundle: 'plugin.source.bundle',
   mcp: 'plugin.source.mcp',
 } as const
 
