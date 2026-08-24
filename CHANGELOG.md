@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Structured logging: `ctx.logger` backend with console / JSON Lines file (`<dshHome>/.dshp-skill-panel.log`) / in-memory buffer exporters (ADR-0009); replaces bare `console.warn/error`.
+- Standalone read-only debugger `scripts/debug-dump.ts` (`pnpm debug`): pool scan, session introduce-set, config resolution, consistency self-check, and recent error/warn log clues (ADR-0010).
+- `POST /skill-panel/sessions`: enumerate live sessions (`{sessionId, status, root}`) so a debugger/caller can discover live session ids instead of guessing (ADR-0010 live-session gap).
+
+### Changed
+- CI (`ci.yml`) now runs the full type-check (host + client), tests, build, and a `pack-check` preflight; release adds a `verify` gate before publish.
+- `prepublishOnly` runs the full type-check (including client).
+
+### Fixed
+- `recentLogs` severity filter inverted: `minLevel='warn'` now returns error+warn, not error+info+warn.
+- `writePatch` no longer silently drops pre-existing patch rows whose id is not a string.
+- Multiple fibers with empty names no longer collapse into a single `(unnamed)` row and hide real plugins.
+- Disabling a plugin mounted in both patch and bundle now also removes the bundle (and marks restart required).
+- MCP `deriveServerName` keeps the full agent hash (long whitelist names no longer collide across agents).
+- MCP `restoreGlobalMcp` scans all insert blocks before restoring, avoiding duplicate rows.
+- MCP `disableGlobalMcp` preserves all same-named rows in the sidecar and restores them all (legacy single-row format still read).
+- MCP `connect` returns `{ok:false}` instead of throwing when `agent.ctx.plugin()` throws synchronously, and no longer leaks `ownedServerNames`.
+- MCP `select` surfaces rollback failures in the returned reason and logs them, instead of discarding them.
+- MCP `usedCount` is now decremented on session end (via `agent.ctx.effect`), so `removeTemplate` is released once a session is gone.
+
 ## [0.1.3] - 2026-08-24
 
 ### Added
