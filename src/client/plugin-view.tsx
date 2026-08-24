@@ -12,14 +12,13 @@ import { useEffect, useState } from 'react'
 import type { SkillPanelLocaleDict } from './locale.ts'
 import type { SkillPanelClient } from './api.ts'
 import type { SkillPanelPluginEntry, SkillPanelMcpDiscovered } from '../types.ts'
+import type { PanelNotice } from './notice.ts'
 
 export interface SkillPanelPluginViewProps {
   sessionId: string
   client: SkillPanelClient | undefined
   t: (key: keyof SkillPanelLocaleDict) => string
 }
-
-type Notice = { kind: 'ok' | 'error'; text: string } | null
 
 const SOURCE_LABEL = {
   core: 'plugin.source.core',
@@ -54,7 +53,7 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
   const [error, setError] = useState(false)
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState<string | null>(null)
-  const [notice, setNotice] = useState<Notice>(null)
+  const [notice, setNotice] = useState<PanelNotice>(null)
   const [installOpen, setInstallOpen] = useState(false)
   const [installId, setInstallId] = useState('')
   const [installName, setInstallName] = useState('')
@@ -83,62 +82,62 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
     refresh()
   }, [sessionId])
 
-  const runToggle = (entry: SkillPanelPluginEntry, enabled: boolean): void => {
+  /** 统一执行面板写操作：busy 守卫 + 成功/失败提示 + 刷新。onOk 返回成功文案；afterOk 为成功副作用；failText 覆盖失败前缀（MCP 用 mcp.notice.failed）。 */
+  const runAction = <T extends { ok: boolean; reason?: string }>(
+    action: () => Promise<T>,
+    onOk: (result: Extract<T, { ok: true }>) => string,
+    opts?: { afterOk?: () => void; failText?: string },
+  ): void => {
+    const failText = opts?.failText ?? t('notice.failed')
     if (busy || client === undefined) return
     setBusy(true)
-    void client.pluginToggle({ sessionId, id: entry.id, enabled }).then(r => {
+    void action().then((result) => {
       setBusy(false)
-      if (r.ok) {
-        setNotice({ kind: 'ok', text: `${enabled ? t('plugin.notice.enabled') : t('plugin.notice.disabled')}: ${r.id}` })
+      if (result.ok) {
+        setNotice({ kind: 'ok', text: onOk(result as Extract<T, { ok: true }>) })
+        opts?.afterOk?.()
       } else {
-        setNotice({ kind: 'error', text: `${t('notice.failed')}: ${r.reason}` })
+        setNotice({ kind: 'error', text: `${failText}: ${result.reason ?? ''}` })
       }
       refresh()
-    }).catch((e) => { setBusy(false); setNotice({ kind: 'error', text: `${t('notice.failed')}: ${String(e)}` }) })
+    }).catch((e) => {
+      setBusy(false)
+      setNotice({ kind: 'error', text: `${failText}: ${String(e)}` })
+    })
+  }
+
+  const runToggle = (entry: SkillPanelPluginEntry, enabled: boolean): void => {
+    runAction(
+      () => client!.pluginToggle({ sessionId, id: entry.id, enabled }),
+      (r) => `${enabled ? t('plugin.notice.enabled') : t('plugin.notice.disabled')}: ${r.id}`,
+    )
   }
 
   const runInstall = (): void => {
-    if (busy || client === undefined) return
     if (installId.trim() === '' || installName.trim() === '') return
-    setBusy(true)
-    void client.pluginInstall({ sessionId, id: installId.trim(), name: installName.trim() }).then(r => {
-      setBusy(false)
-      if (r.ok) {
-        setNotice({ kind: 'ok', text: `${t('plugin.notice.installed')}: ${r.id}` })
-        setInstallOpen(false)
-        setInstallId('')
-        setInstallName('')
-      } else {
-        setNotice({ kind: 'error', text: `${t('notice.failed')}: ${r.reason}` })
-      }
-      refresh()
-    }).catch((e) => { setBusy(false); setNotice({ kind: 'error', text: `${t('notice.failed')}: ${String(e)}` }) })
+    runAction(
+      () => client!.pluginInstall({ sessionId, id: installId.trim(), name: installName.trim() }),
+      (r) => `${t('plugin.notice.installed')}: ${r.id}`,
+      {
+        afterOk: () => {
+          setInstallOpen(false)
+          setInstallId('')
+          setInstallName('')
+        },
+      },
+    )
   }
 
   const runPromote = (entry: SkillPanelPluginEntry): void => {
-    if (busy || client === undefined) return
-    setBusy(true)
-    void client.pluginPromote({ sessionId, id: entry.id }).then(r => {
-      setBusy(false)
-      if (r.ok) {
-        setNotice({ kind: 'ok', text: `${t('plugin.notice.promoted')}: ${r.id}` })
-      } else {
-        setNotice({ kind: 'error', text: `${t('notice.failed')}: ${r.reason}` })
-      }
-      refresh()
-    }).catch((e) => { setBusy(false); setNotice({ kind: 'error', text: `${t('notice.failed')}: ${String(e)}` }) })
+    runAction(() => client!.pluginPromote({ sessionId, id: entry.id }), (r) => `${t('plugin.notice.promoted')}: ${r.id}`)
   }
 
   const runSelectMcp = (name: string): void => {
-    if (busy || client === undefined) return
-    setBusy(true)
-    void client.mcpSelect({ sessionId, name }).then((r) => {
-      setBusy(false)
-      if (r.ok) setNotice({ kind: 'ok', text: `${t('mcp.notice.selected')}: ${r.entry.name}` })
-      else setNotice({ kind: 'error', text: `${t('mcp.notice.failed')}: ${r.reason}` })
-      refresh()
-      refreshDiscover()
-    }).catch((e) => { setBusy(false); setNotice({ kind: 'error', text: `${t('mcp.notice.failed')}: ${String(e)}` }) })
+    runAction(
+      () => client!.mcpSelect({ sessionId, name }),
+      (r) => `${t('mcp.notice.selected')}: ${r.entry.name}`,
+      { afterOk: refreshDiscover, failText: t('mcp.notice.failed') },
+    )
   }
 
   const runCheck = (entry: SkillPanelPluginEntry): void => {
@@ -158,15 +157,11 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
   }
 
   const runRemoveMcp = (entry: SkillPanelPluginEntry): void => {
-    if (busy || client === undefined) return
-    setBusy(true)
-    void client.mcpRemove({ sessionId, name: entry.id }).then((r) => {
-      setBusy(false)
-      if (r.ok) setNotice({ kind: 'ok', text: `${t('mcp.notice.removed')}: ${entry.id}` })
-      else setNotice({ kind: 'error', text: `${t('mcp.notice.failed')}: ${r.reason}` })
-      refresh()
-      refreshDiscover()
-    }).catch((e) => { setBusy(false); setNotice({ kind: 'error', text: `${t('mcp.notice.failed')}: ${String(e)}` }) })
+    runAction(
+      () => client!.mcpRemove({ sessionId, name: entry.id }),
+      () => `${t('mcp.notice.removed')}: ${entry.id}`,
+      { afterOk: refreshDiscover, failText: t('mcp.notice.failed') },
+    )
   }
 
   if (error) {

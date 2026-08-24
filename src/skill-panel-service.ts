@@ -419,7 +419,6 @@ export class SkillPanelService {
       id: p.id,
       source: p.source,
       state: p.state,
-      stateLabel: p.stateLabel,
       active: p.active,
       protected: p.protected,
       manageable: p.manageable,

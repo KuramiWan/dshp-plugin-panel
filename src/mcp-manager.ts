@@ -17,12 +17,15 @@
  */
 
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { load as parseYaml, dump as stringifyYaml } from 'js-yaml'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { apply as mcpApply, inject as mcpInject, Config as McpConfig } from '@deepseek-ai/dsh-mcp-client'
+import { apply as mcpApply, inject as mcpInject, type Config as McpConfig } from '@deepseek-ai/dsh-mcp-client'
 import type { Context } from '@deepseek-ai/cordis'
+import { defaultDshHome } from './home.ts'
+import { atomicWriteFileSync, readTextFileSync } from './fs.ts'
+import { isMcpClientConfig, registryFibers } from './registry.ts'
 
 /** 白名单一条候选 server（6a：模型只能按 name 连这里登记的 server）。 */
 export interface McpServerTemplate {
@@ -138,8 +141,9 @@ export class SessionMcpManager {
 
   private readFile(): McpServerTemplate[] {
     if (!existsSync(this.whitelistFile)) return []
+    const text = readTextFileSync(this.whitelistFile)
+    if (text === undefined) return []
     try {
-      const text = readFileSync(this.whitelistFile, 'utf8').replace(/^\uFEFF/, '')
       const data = JSON.parse(text) as { servers?: McpServerTemplate[] }
       const servers = Array.isArray(data?.servers) ? data.servers : []
       return servers.filter(s => typeof s?.name === 'string' && s.name !== '')
@@ -150,7 +154,7 @@ export class SessionMcpManager {
 
   private persist(): void {
     mkdirSync(dirname(this.whitelistFile), { recursive: true })
-    writeFileSync(this.whitelistFile, JSON.stringify({ servers: this.cached }, null, 2), 'utf8')
+    atomicWriteFileSync(this.whitelistFile, JSON.stringify({ servers: this.cached }, null, 2))
   }
 
   /** 当前白名单候选。 */
@@ -173,46 +177,13 @@ export class SessionMcpManager {
   }
 
   /**
-   * 从 ordis.registry 拍平所有已加载插件 Fiber（含 mcp-client）。registry 是
-   * Map<unknown, { fibers }>，Fiber 携带 name/state/config。
-   */
-  private registryFibers(): { name?: unknown; state?: number; config?: unknown }[] {
-    const registry = this.context.registry as unknown as Map<unknown, { fibers?: { name?: unknown; state?: number; config?: unknown }[] }>
-    const out: { name?: unknown; state?: number; config?: unknown }[] = []
-    for (const runtime of registry.values()) {
-      for (const fiber of runtime.fibers ?? []) out.push(fiber)
-    }
-    return out
-  }
-
-  /**
-   * mcp-client 插件配置签名：`serverName`（string）+ `transport`（stdio/streamable-http）。
-   * Cordis `fiber.name` 是插件显示名/行 id（如 `mcp-chrome-devtools`），不是包名，
-   * 故不能按包名过滤，须按该配置形状识别"这是一个 mcp-client 桥接的 server"。
-   */
-  private isMcpClientConfig(config: unknown): config is { serverName: string; transport: 'stdio' | 'streamable-http' } {
-    const c = config as Record<string, unknown> | undefined
-    return typeof c?.serverName === 'string' && c.serverName !== ''
-      && (c.transport === 'stdio' || c.transport === 'streamable-http')
-  }
-
-  /**
    * 从 DSH 组合(cordis.registry)枚举的 mcp-client 插件原始模板（含 env/headers secrets）。
    * 内部仅在本类使用；对外只暴露脱敏视图（discover）与"按名选择复制"（select）。
    */
   private discoveredTemplates(): McpServerTemplate[] {
-    const out: McpServerTemplate[] = []
-    for (const fiber of this.registryFibers()) {
-      if (!this.isMcpClientConfig(fiber.config)) continue
-      const cfg = fiber.config as { serverName: string; transport: 'stdio' | 'streamable-http'; command?: string; args?: unknown; url?: string; env?: unknown; headers?: unknown }
-      if (typeof cfg.command === 'string') out.push({ name: cfg.serverName, transport: cfg.transport, command: cfg.command })
-      else if (typeof cfg.url === 'string') out.push({ name: cfg.serverName, transport: cfg.transport, url: cfg.url })
-      else out.push({ name: cfg.serverName, transport: cfg.transport })
-    }
-    // 补全 args / env / headers 到已建模板（保持原读取逻辑的完备性）。
     const byName = new Map<string, McpServerTemplate>()
-    for (const fiber of this.registryFibers()) {
-      if (!this.isMcpClientConfig(fiber.config)) continue
+    for (const fiber of registryFibers(this.context)) {
+      if (!isMcpClientConfig(fiber.config)) continue
       const cfg = fiber.config as { serverName: string; transport: 'stdio' | 'streamable-http'; command?: string; args?: unknown; url?: string; env?: unknown; headers?: unknown }
       const base = byName.get(cfg.serverName) ?? { name: cfg.serverName, transport: cfg.transport }
       if (typeof cfg.command === 'string') base.command = cfg.command
@@ -233,8 +204,8 @@ export class SessionMcpManager {
   discover(): McpDiscoveredView[] {
     const managed = new Set(this.cached.map(s => s.name))
     const actives = new Set<string>()
-    for (const fiber of this.registryFibers()) {
-      if (this.isMcpClientConfig(fiber.config) && fiber.state === 2) {
+    for (const fiber of registryFibers(this.context)) {
+      if (isMcpClientConfig(fiber.config) && fiber.state === 2) {
         actives.add(fiber.config.serverName)
       }
     }
@@ -343,16 +314,16 @@ export class SessionMcpManager {
 
   /** home 级 patch 路径（$DSH_HOME/cordis.patch.yml，跨 profile 共享）。 */
   private homePatchFile(): string {
-    const home = process.env.DSH_HOME ?? join(process.env.USERPROFILE ?? '.', '.dsh')
-    return join(home, 'cordis.patch.yml')
+    return join(defaultDshHome(), 'cordis.patch.yml')
   }
 
   /** 读 home 级 patch 为顶层选项数组（非法/空 → 空数组）。 */
   private readHomePatchOptions(): HomePatchOption[] {
     const file = this.homePatchFile()
     if (!existsSync(file)) return []
+    const text = readTextFileSync(file)
+    if (text === undefined) return []
     try {
-      const text = readFileSync(file, 'utf8').replace(/^\uFEFF/, '')
       const parsed = parseYaml(text) as unknown
       if (Array.isArray(parsed)) return parsed as HomePatchOption[]
       return []
@@ -377,10 +348,8 @@ export class SessionMcpManager {
       return { ok: false, reason: `generated home patch failed to parse: ${error instanceof Error ? error.message : String(error)}` }
     }
     try {
-      if (existsSync(file)) writeFileSync(file + '.bak', readFileSync(file, 'utf8'), 'utf8')
-      const tmp = file + '.tmp'
-      writeFileSync(tmp, nextText, 'utf8')
-      renameSync(tmp, file)
+      if (existsSync(file)) writeFileSync(file + '.bak', readTextFileSync(file) ?? '', 'utf8')
+      atomicWriteFileSync(file, nextText)
     } catch (error) {
       return { ok: false, reason: `write home patch failed: ${error instanceof Error ? error.message : String(error)}` }
     }
@@ -390,8 +359,9 @@ export class SessionMcpManager {
   /** 读已禁用全局 MCP 的原始行（sidecar，供恢复）。 */
   private readDisabledRows(): Record<string, HomePatchRow> {
     if (!existsSync(this.disabledFile)) return {}
+    const text = readTextFileSync(this.disabledFile)
+    if (text === undefined) return {}
     try {
-      const text = readFileSync(this.disabledFile, 'utf8').replace(/^\uFEFF/, '')
       const data = JSON.parse(text) as Record<string, HomePatchRow>
       return typeof data === 'object' && data !== null ? data : {}
     } catch {
@@ -403,7 +373,7 @@ export class SessionMcpManager {
   private writeDisabledRows(rows: Record<string, HomePatchRow>): void {
     try {
       mkdirSync(dirname(this.disabledFile), { recursive: true })
-      writeFileSync(this.disabledFile, JSON.stringify(rows, null, 2), 'utf8')
+      atomicWriteFileSync(this.disabledFile, JSON.stringify(rows, null, 2))
     } catch {
       // sidecar 写失败不阻断（只是恢复全局时可能缺原始行）。
     }
@@ -494,7 +464,7 @@ export class SessionMcpManager {
   async connect(
     agent: Agent,
     name: string,
-    _signal?: AbortSignal,
+    signal?: AbortSignal,
   ): Promise<{ ok: true; name: string; serverName: string; alreadyConnected: boolean } | { ok: false; reason: string }> {
     const template = this.cached.find(s => s.name === name)
     if (template === undefined) return { ok: false, reason: `whitelist has no "${name}"` }
@@ -510,14 +480,22 @@ export class SessionMcpManager {
     this.ownedServerNames.add(serverName)
 
     // 挂到 agent.ctx：mcp-client 的 ctx.get('tools') 落进该 agent scope。
-    // apply 是 async（连接+首次工具发现），its Promise 需 await 以等待就绪，
-    // 但 Cordis 以 fiber 方式挂载，公认可同步触发；这里通过 fiber 拿到宿主后
-    // 再等其连接收敛（mcp-client 内部 effect-scoped，dispose 会断开）。
+    // apply 是 async（连接+首次工具发现）；failOnStartupError=true 时连接失败会 reject。
+    // fiber.await() 等待启动收敛并重抛启动错误，据此把失败回传给调用方（不再静默吞掉）。
     const fiber = agent.ctx.plugin(
       { name: mcpApply.name, inject: mcpInject, apply: mcpApply } as
       { name: string; inject: string[]; apply: (ctx: Context, cfg: unknown) => Promise<void> },
       config,
     )
+
+    try {
+      await this.awaitWithSignal(fiber.await(), signal)
+    } catch (error) {
+      // 连接失败/被取消：清理派生名与 fiber，不记录连接、不计数。
+      this.ownedServerNames.delete(serverName)
+      void fiber.dispose()
+      return { ok: false, reason: `连接 "${name}" 失败：${error instanceof Error ? error.message : String(error)}` }
+    }
 
     // 主动断开/清理：dispose fiber → mcp-client connection effect 展开 → 断开+注销 tools。
     const dispose = () => { void fiber.dispose() }
@@ -526,6 +504,24 @@ export class SessionMcpManager {
 
     // 会话结束自动清理由 agent.ctx 负责；此处仅在 agent 级显式断开时调用 dispose。
     return { ok: true, name, serverName, alreadyConnected: false }
+  }
+
+  /** 等待 fiber 启动收敛；支持 AbortSignal 提前中止（工具被取消时不留下半连接）。 */
+  private async awaitWithSignal(promise: Promise<unknown>, signal?: AbortSignal): Promise<void> {
+    if (signal === undefined) {
+      await promise
+      return
+    }
+    // 先给 promise 挂上处理，再处理 abort：避免 signal 已中止时 fiber 的拒绝成为未处理拒绝。
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => reject(new Error('aborted'))
+      signal.addEventListener('abort', onAbort, { once: true })
+      promise.then(
+        () => { signal.removeEventListener('abort', onAbort); resolve() },
+        (error: unknown) => { signal.removeEventListener('abort', onAbort); reject(error) },
+      )
+      if (signal.aborted) onAbort()
+    })
   }
 
   /** 断开某 agent 的一个会话 MCP（幂等）。 */
@@ -576,10 +572,9 @@ export class SessionMcpManager {
     }
   }
 
-  /** 白名单模板 → mcp-client Config。 */
-  private toMcpConfig(template: McpServerTemplate, serverName: string): unknown {
+  /** 白名单模板 → mcp-client Config。failOnStartupError=true：连接失败会 reject，由 connect() 回传。 */
+  private toMcpConfig(template: McpServerTemplate, serverName: string): McpConfig {
     if (template.transport === 'stdio') {
-      // McpConfig 是 schemastery union；运行时 DSH 校验。这里构造字面量。
       return {
         transport: 'stdio',
         serverName,
@@ -588,7 +583,7 @@ export class SessionMcpManager {
         env: template.env ?? {},
         cwd: '',
         toolCallTimeoutMs: 60_000,
-        failOnStartupError: false,
+        failOnStartupError: true,
       }
     }
     return {
@@ -597,10 +592,7 @@ export class SessionMcpManager {
       url: template.url as string,
       headers: template.headers ?? {},
       toolCallTimeoutMs: 60_000,
-      failOnStartupError: false,
+      failOnStartupError: true,
     }
   }
 }
-
-// 引用 McpConfig 类型以防未使用告警（类型仅用于文档化），运行时校验由 DSH 做。
-void McpConfig

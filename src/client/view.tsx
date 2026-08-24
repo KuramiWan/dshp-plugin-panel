@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { SkillPanelLocaleDict } from './locale.ts'
 import type { SkillPanelClient } from './api.ts'
+import type { PanelNotice } from './notice.ts'
 
 export interface SkillPanelBrowseEntry {
   name: string
@@ -38,8 +39,6 @@ export interface SkillPanelViewProps {
   t: (key: keyof SkillPanelLocaleDict) => string
 }
 
-type Notice = { kind: 'ok' | 'error'; text: string } | null
-
 /** 条目统一视图：面板里三区都转成它来分组/展示。 */
 interface SkillItem {
   name: string
@@ -57,7 +56,7 @@ export function SkillPanelView(props: SkillPanelViewProps) {
   const [query, setQuery] = useState('')
   const [error, setError] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState<Notice>(null)
+  const [notice, setNotice] = useState<PanelNotice>(null)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   /** 打 tag 行：name → 当前 tags 文本。 */
   const [tagFor, setTagFor] = useState<string | null>(null)
@@ -152,17 +151,21 @@ export function SkillPanelView(props: SkillPanelViewProps) {
     setTagFor(null)
   }
 
-  const runSetTags = (name: string): void => {
+  /** 统一执行面板写操作：busy 守卫 + 成功/失败提示 + 刷新。onOk 在 result.ok 时返回成功文案；afterOk 为可选成功副作用。 */
+  const runAction = <T extends { ok: boolean; reason?: string }>(
+    action: () => Promise<T>,
+    onOk: (result: Extract<T, { ok: true }>) => string,
+    afterOk?: () => void,
+  ): void => {
     if (busy || client === undefined) return
-    const tags = tagText.split(',').map(s => s.trim()).filter(s => s !== '')
     setBusy(true)
-    void client.setTags({ sessionId, name, tags }).then((result) => {
+    void action().then((result) => {
       setBusy(false)
       if (result.ok) {
-        setNotice({ kind: 'ok', text: `${t('notice.tagged')}: ${result.name}` })
-        closeTag()
+        setNotice({ kind: 'ok', text: onOk(result as Extract<T, { ok: true }>) })
+        afterOk?.()
       } else {
-        setNotice({ kind: 'error', text: `${t('notice.failed')}: ${result.reason}` })
+        setNotice({ kind: 'error', text: `${t('notice.failed')}: ${result.reason ?? ''}` })
       }
       refresh()
     }).catch(() => {
@@ -171,68 +174,36 @@ export function SkillPanelView(props: SkillPanelViewProps) {
     })
   }
 
+  const runSetTags = (name: string): void => {
+    const tags = tagText.split(',').map(s => s.trim()).filter(s => s !== '')
+    runAction(
+      () => client!.setTags({ sessionId, name, tags }),
+      () => `${t('notice.tagged')}: ${name}`,
+      closeTag,
+    )
+  }
+
   const runIntroduce = (name: string): void => {
-    if (busy || client === undefined) return
-    setBusy(true)
-    void client.introduce({ sessionId, name }).then((result) => {
-      setBusy(false)
-      if (result.ok) {
-        const persist = result.persisted ? t('notice.persisted') : ''
-        setNotice({
-          kind: 'ok',
-          text: result.alreadyIntroduced
-            ? t('notice.already')
-            : t('notice.introduced') + persist + (result.shadowed ? t('notice.shadow') : ''),
-        })
-      } else {
-        setNotice({ kind: 'error', text: `${t('notice.failed')}: ${result.reason}` })
-      }
-      refresh()
-    }).catch(() => {
-      setBusy(false)
-      setNotice({ kind: 'error', text: t('notice.failed') })
+    runAction(() => client!.introduce({ sessionId, name }), (result) => {
+      const persist = result.persisted ? t('notice.persisted') : ''
+      return result.alreadyIntroduced
+        ? t('notice.already')
+        : t('notice.introduced') + persist + (result.shadowed ? t('notice.shadow') : '')
     })
   }
 
   const runRemove = (name: string): void => {
-    if (busy || client === undefined) return
-    setBusy(true)
-    void client.removeSkill({ sessionId, name }).then((result) => {
-      setBusy(false)
-      setNotice(result.ok ? { kind: 'ok', text: t('notice.removed') } : { kind: 'error', text: `${t('notice.failed')}: ${result.reason}` })
-      refresh()
-    }).catch(() => {
-      setBusy(false)
-      setNotice({ kind: 'error', text: t('notice.failed') })
-    })
+    runAction(() => client!.removeSkill({ sessionId, name }), () => t('notice.removed'))
   }
 
   /** 启用：可用池 → 全局激活池。 */
   const runActivate = (name: string): void => {
-    if (busy || client === undefined) return
-    setBusy(true)
-    void client.globalActivate({ sessionId, name }).then((result) => {
-      setBusy(false)
-      setNotice(result.ok ? { kind: 'ok', text: `${t('notice.activated')}: ${result.name}` } : { kind: 'error', text: `${t('notice.failed')}: ${result.reason}` })
-      refresh()
-    }).catch(() => {
-      setBusy(false)
-      setNotice({ kind: 'error', text: t('notice.failed') })
-    })
+    runAction(() => client!.globalActivate({ sessionId, name }), (result) => `${t('notice.activated')}: ${result.name}`)
   }
 
   /** 停用：全局激活池 → 可用池。 */
   const runDeactivate = (name: string): void => {
-    if (busy || client === undefined) return
-    setBusy(true)
-    void client.globalDeactivate({ sessionId, name }).then((result) => {
-      setBusy(false)
-      setNotice(result.ok ? { kind: 'ok', text: `${t('notice.deactivated')}: ${result.name}` } : { kind: 'error', text: `${t('notice.failed')}: ${result.reason}` })
-      refresh()
-    }).catch(() => {
-      setBusy(false)
-      setNotice({ kind: 'error', text: t('notice.failed') })
-    })
+    runAction(() => client!.globalDeactivate({ sessionId, name }), (result) => `${t('notice.deactivated')}: ${result.name}`)
   }
 
   const renderTagRow = (item: SkillItem): ReactNode => {

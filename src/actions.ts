@@ -71,6 +71,18 @@ export function filterBrowse(
   return items.filter(item => item.name.toLowerCase().includes(q) || item.description.toLowerCase().includes(q))
 }
 
+/** 按首个 tag 分组（无 tag 归 ungroupedKey）；tools/commands 渲染共用。 */
+export function groupByFirstTag<T extends { readonly tags: readonly string[] }>(items: readonly T[], ungroupedKey: string): Map<string, T[]> {
+  const groups = new Map<string, T[]>()
+  for (const item of items) {
+    const key = item.tags.length === 0 ? ungroupedKey : item.tags[0]
+    const list = groups.get(key)
+    if (list === undefined) groups.set(key, [item])
+    else list.push(item)
+  }
+  return groups
+}
+
 /**
  * 从池引入 skill 到当前会话（幂等；同名影子覆盖仅本会话）。
  * 纯会话注册：不复制任何磁盘文件；注册资源目录指回池内原目录。

@@ -7,9 +7,10 @@
  * <poolRoot>/.session-skills/<sessionId>.json；宿主重启后 resume 事件触发重放（见 replay）。
  * 键用 agent.session.id（持久字符串，跨重启稳定；WeakMap 的 Agent 对象键跨重启失效）。
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { readTextFileSync } from './fs.ts'
 
 const SESSION_SKILLS_DIR = '.session-skills'
 
@@ -78,8 +79,9 @@ export class SessionSkillStore {
     if (dir === undefined) return []
     const path = join(dir, `${sessionId}.json`)
     if (!existsSync(path)) return []
+    const text = readTextFileSync(path)
+    if (text === undefined) return []
     try {
-      const text = readFileSync(path, 'utf8').replace(/^\uFEFF/, '')
       const data = JSON.parse(text) as { skills?: unknown }
       return Array.isArray(data?.skills) ? data.skills.filter(s => typeof s === 'string') as string[] : []
     } catch {

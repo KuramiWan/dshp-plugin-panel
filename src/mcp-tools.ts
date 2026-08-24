@@ -10,6 +10,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { JsonValue } from '@deepseek-ai/dsh-session/types'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { requireAgent } from './agent.ts'
 import { SessionMcpManager } from './mcp-manager.ts'
 
 export interface SessionMcpConfig {
@@ -19,10 +20,7 @@ export interface SessionMcpConfig {
 export function applySessionMcpTools(ctx: Context, config: SessionMcpConfig): void {
   const manager = config.manager
 
-  const agentOf = (exec: { agent?: Agent }): Agent => {
-    if (exec.agent === undefined) throw new Error('session_mcp tools require a calling agent')
-    return exec.agent
-  }
+  const agentOf = (exec: { agent?: Agent }): Agent => requireAgent(exec, 'session_mcp tools')
 
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'session_mcp_list',

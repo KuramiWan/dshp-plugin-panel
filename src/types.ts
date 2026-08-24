@@ -238,7 +238,6 @@ export interface SkillPanelPluginEntry {
   readonly source: SkillPanelPluginSource
   /** FiberState 数值；-1 = 已停用（记录在状态文件、不在 registry）。 */
   readonly state: number
-  readonly stateLabel: string
   readonly active: boolean
   readonly protected: boolean
   readonly manageable: boolean

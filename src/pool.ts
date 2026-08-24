@@ -6,9 +6,12 @@
  * 会话引入）共享；目录结构只作存放位置（兼容 `local/<group>/<skill>/` 旧布局，但不作分组展示）。
  * 注意：Node 26 的 V8 不接受 (?m) 内联标志——逐行匹配，无内联标志。
  */
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
+import { defaultDshHome, type EnvLike } from './home.ts'
+import { readTextFileSync } from './fs.ts'
+
+export { type EnvLike } from './home.ts'
 
 export interface PoolEntry {
   readonly name: string
@@ -45,31 +48,13 @@ const NAME_PATTERN = /^[a-z0-9][a-z0-9-_.]*$/
 const GROUP_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9-_. ]{0,31}$/
 
 /**
- * 读取 UTF-8 文本并剥离 BOM（真实池文件由 PowerShell 写入、常带 \uFEFF 头；
- * 否则 frontmatter 正则匹配 ^--- 失败、JSON.parse 报 Unexpected token）。
- */
-function readText(path: string): string | undefined {
-  try {
-    return readFileSync(path, 'utf8').replace(/^\uFEFF/, '')
-  } catch {
-    return undefined
-  }
-}
-
-export interface EnvLike {
-  DSH_HOME?: string
-}
-
-/**
  * DSH home 解析优先级（对齐 @deepseek-ai/dsh-home-paths resolveDshHome）：
  * 显式配置 > `$DSH_HOME` > `~/.dsh`。空/纯空白的 `$DSH_HOME` 视为未设置。
  * home 目录本身默认即 `~/.dsh`（`$DSH_HOME` 让位时直接是 `~/.dsh`），
  * 技能池固定位于该 home 下的 `.skill-pool` 子目录。
  */
 export function defaultPoolRoot(env: EnvLike = process.env): string {
-  const fromEnv = env.DSH_HOME?.trim()
-  const home = fromEnv || join(homedir(), '.dsh')
-  return join(home, '.skill-pool')
+  return join(defaultDshHome(env), '.skill-pool')
 }
 
 /** 显式提供的 poolRoot 或默认根。 */
@@ -83,9 +68,7 @@ export function resolvePoolRoot(poolRoot: string | undefined, env: EnvLike = pro
  * （启用/停用 = 与池 local/ 之间移动目录），但默认只扫描展示、不动现有内容。
  */
 export function defaultGlobalSkillsRoot(env: EnvLike = process.env): string {
-  const fromEnv = env.DSH_HOME?.trim()
-  const home = fromEnv || join(homedir(), '.dsh')
-  return join(home, 'skills')
+  return join(defaultDshHome(env), 'skills')
 }
 
 /**
@@ -100,7 +83,7 @@ export function listGlobalEntries(root: string): Array<{ readonly name: string; 
     const dir = join(root, dirent.name)
     const skillPath = join(dir, 'SKILL.md')
     if (!existsSync(skillPath)) continue
-    const raw = readText(skillPath)
+    const raw = readTextFileSync(skillPath)
     const parsed = raw === undefined ? undefined : parseSkillFile(raw)
     const name = parsed?.fm.name ?? dirent.name
     entries.push({
@@ -202,7 +185,7 @@ export function parseSkillFile(raw: string): { fm: Frontmatter; body: string } |
 function parseDir(dir: string): PoolEntry | undefined {
   const skillPath = join(dir, 'SKILL.md')
   if (!existsSync(skillPath)) return undefined
-  const raw = readText(skillPath)
+  const raw = readTextFileSync(skillPath)
   if (raw === undefined) return undefined
   const parsed = parseSkillFile(raw)
   if (parsed === undefined || parsed.fm.name === undefined || parsed.fm.description === undefined) return undefined
@@ -250,7 +233,7 @@ export function findPoolEntry(poolRoot: string, name: string): PoolEntry | undef
 export function readSkillContent(entry: PoolEntry): SkillContent | undefined {
   const skillPath = join(entry.directory, 'SKILL.md')
   if (!existsSync(skillPath)) return undefined
-  const raw = readText(skillPath)
+  const raw = readTextFileSync(skillPath)
   if (raw === undefined) return undefined
   const parsed = parseSkillFile(raw)
   if (parsed === undefined || parsed.fm.name === undefined || parsed.fm.description === undefined) return undefined
@@ -269,11 +252,12 @@ export function readSkillContent(entry: PoolEntry): SkillContent | undefined {
 /**
  * 写操作：替换/新增 SKILL.md frontmatter 的 `tags:` 行（跨池共享分组维度）。
  * 仅改 tags 行，其余 frontmatter 与正文逐字保留；无 frontmatter 或不可解析时拒绝。
+ * 兼容块列表形式（`tags:\n  - a`）：替换 `tags:` 行时一并移除其续行，避免残留损坏 frontmatter。
  */
 export function setSkillTags(directory: string, tags: readonly string[]): { ok: true } | { ok: false; reason: string } {
   const skillPath = join(directory, 'SKILL.md')
   if (!existsSync(skillPath)) return { ok: false, reason: 'SKILL.md 不存在' }
-  const raw = readText(skillPath)
+  const raw = readTextFileSync(skillPath)
   if (raw === undefined) return { ok: false, reason: 'SKILL.md 不可读' }
   const m = raw.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/)
   if (m === null || m[2] === undefined) return { ok: false, reason: '无 frontmatter，无法写 tags' }
@@ -282,8 +266,16 @@ export function setSkillTags(directory: string, tags: readonly string[]): { ok: 
   const lines = fmText.split(/\r?\n/)
   const tagLine = tags.length === 0 ? 'tags: []' : `tags: [${tags.join(', ')}]`
   const idx = lines.findIndex(line => /^tags:/.test(line))
-  if (idx >= 0) lines[idx] = tagLine
-  else lines.push(tagLine)
+  if (idx >= 0) {
+    lines[idx] = tagLine
+    // 移除块列表续行（`tags:\n  - a` 形式），避免残留 `  - a` 破坏 frontmatter。
+    let j = idx + 1
+    while (j < lines.length && /^\s*-\s/.test(lines[j] ?? '')) {
+      lines.splice(j, 1)
+    }
+  } else {
+    lines.push(tagLine)
+  }
   // m[1]=开头的 --- 行，m[3]=结尾的 --- 行；正文 = raw 从完整匹配后开始。
   const next = m[1] + lines.join(lineSep) + m[3] + raw.slice(m[0].length)
   try {

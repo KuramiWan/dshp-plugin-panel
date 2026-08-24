@@ -11,7 +11,8 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-skill'
 import type { JsonValue } from '@deepseek-ai/dsh-session/types'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { browsePool, filterBrowse, introduceSkill, removeSkill, type PoolBrowseEntry } from './actions.ts'
+import { browsePool, filterBrowse, groupByFirstTag, introduceSkill, removeSkill, type PoolBrowseEntry } from './actions.ts'
+import { requireAgent } from './agent.ts'
 import type { SessionSkillStore } from './handles.ts'
 
 export interface SessionSkillConfig {
@@ -24,13 +25,7 @@ export interface SessionSkillConfig {
 /** 按 tags 渲染浏览结果（分组标题 + 组内条目；无 tag 技能归「ungrouped」，行尾附全部 tags）。 */
 function renderBrowse(items: PoolBrowseEntry[]): string {
   if (items.length === 0) return 'no skills in pool'
-  const groups = new Map<string, PoolBrowseEntry[]>()
-  for (const item of items) {
-    const key = item.tags.length === 0 ? 'ungrouped' : item.tags[0]
-    const list = groups.get(key)
-    if (list === undefined) groups.set(key, [item])
-    else list.push(item)
-  }
+  const groups = groupByFirstTag(items, 'ungrouped')
   const blocks: string[] = []
   for (const [group, entries] of groups) {
     const lines = entries.map((item) => {
@@ -47,10 +42,7 @@ export function applySessionSkillTools(ctx: Context, config: SessionSkillConfig)
   const poolRoot = config.poolRoot
   const store = config.store
 
-  const agentOf = (exec: { agent?: Agent }): Agent => {
-    if (exec.agent === undefined) throw new Error('session_skill tools require a calling agent')
-    return exec.agent
-  }
+  const agentOf = (exec: { agent?: Agent }): Agent => requireAgent(exec, 'session_skill tools')
 
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'session_skill_browse',

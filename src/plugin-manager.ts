@@ -23,19 +23,19 @@
  * 状态文件：`<profileDir>/.dshp-plugins.json`，记录面板管理过的用户插件行规格
  * （{id,name}），使「停用后再启用」能跨会话还原（与 mcp-manager 白名单文件同模式）。
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { load as parseYaml, dump as stringifyYaml } from 'js-yaml'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionMcpManager } from './mcp-manager.ts'
+import { defaultDshHome } from './home.ts'
+import { atomicWriteFileSync, readTextFileSync } from './fs.ts'
+import { isMcpClientConfig, registryFibers } from './registry.ts'
 
 /** 面板自身包名与行 id（禁止停）。 */
 export const PANEL_PACKAGE = '@super_camel/dsh-skill-panel'
 export const PANEL_ROW_ID = 'dshp-skill-panel'
-
-/** FiberState 中文标签（Cordis：PENDING=0 LOADING=1 ACTIVE=2 FAILED=3 DISPOSED=4 UNLOADING=5）。 */
-export const FIBER_LABELS = ['pending', 'loading', 'active', 'failed', 'disposed', 'unloading'] as const
 
 /** 组合行来源：core（bundle / host 核心）| patch（活动 profile 用户插件行）| mcp（mcp-client 桥接）。 */
 export type PluginSource = 'core' | 'patch' | 'bundle' | 'mcp'
@@ -47,8 +47,6 @@ export interface PluginFiberView {
   source: PluginSource
   /** FiberState 数值。 */
   state: number
-  /** FiberState 中文标签。 */
-  stateLabel: string
   /** 是否 ACTIVE（state === 2）。 */
   active: boolean
   /** 是否禁止操作（core 或面板自身）。 */
@@ -108,17 +106,13 @@ const DEFAULT_PROFILE = 'web'
  * （即正在挂载本插件、且面板要管理的组合所在），否则退回 web。
  */
 function resolveProfileDir(): string {
-  const home = process.env.DSH_HOME ?? join(process.env.USERPROFILE ?? '.', '.dsh')
-  const profilesDir = join(home, 'profiles')
+  const profilesDir = join(defaultDshHome(), 'profiles')
   if (existsSync(profilesDir)) {
     for (const name of readdirSync(profilesDir)) {
       const patch = join(profilesDir, name, 'cordis.patch.yml')
       if (!existsSync(patch)) continue
-      try {
-        if (readFileSync(patch, 'utf8').includes(PANEL_PACKAGE)) return join(profilesDir, name)
-      } catch {
-        // 读取失败（权限/损坏）则跳过，继续找下一个。
-      }
+      // 读取失败（权限/损坏）返回 undefined，跳过继续找下一个。
+      if (readTextFileSync(patch)?.includes(PANEL_PACKAGE)) return join(profilesDir, name)
     }
   }
   return join(profilesDir, DEFAULT_PROFILE)
@@ -140,22 +134,6 @@ export class PluginManager {
   }
 
   // ---- 组合盘点 ----
-
-  private registryFibers(): { name?: unknown; state?: number; config?: unknown }[] {
-    const registry = this.ctx.registry as unknown as Map<unknown, { fibers?: { name?: unknown; state?: number; config?: unknown }[] }>
-    const out: { name?: unknown; state?: number; config?: unknown }[] = []
-    for (const runtime of registry.values()) {
-      for (const fiber of runtime.fibers ?? []) out.push(fiber)
-    }
-    return out
-  }
-
-  /** mcp-client 桥接识别：config 带 serverName + transport。 */
-  private isMcpClientConfig(config: unknown): config is { serverName: string; transport: 'stdio' | 'streamable-http' } {
-    const c = config as Record<string, unknown> | undefined
-    return typeof c?.serverName === 'string' && c.serverName !== ''
-      && (c.transport === 'stdio' || c.transport === 'streamable-http')
-  }
 
   /** 面板自身 fiber 的 runtime 名（fiber.name 是插件类名，如 SkillControlPlugin）。 */
   private selfFiberName(): string | undefined {
@@ -183,13 +161,20 @@ export class PluginManager {
     return this.selfNames().has(id)
   }
 
+  /** 组合行来源分类（等价于原嵌套三元，拆开更可读）。 */
+  private classifySource(isSelf: boolean, inPatch: boolean, isUserBundle: boolean, pendingPromote: boolean): PluginSource {
+    if (isSelf || inPatch) return 'patch'
+    if (isUserBundle) return 'bundle'
+    if (pendingPromote) return 'patch'
+    return 'core'
+  }
+
   /**
    * 盘点：registry 所有 Fiber + 活动 profile patch 行规格 + 状态文件里已停用的用户插件
    * 规格，合并为面板视图。source 优先级：mcp > patch > core。
    * @param agent - 可选；用于标注 mcp 桥接行的会话级连接状态。
    */
   list(agent?: Agent): PluginFiberView[] {
-    this.syncSpecs()
     const patchRows = this.readPatchRows()
     const patchIds = new Set(patchRows.map(r => String(r.id)))
     const specs = this.readSpecs()
@@ -200,7 +185,7 @@ export class PluginManager {
       for (const n of this.mcp.connectedNames(agent)) connected.add(n)
     }
 
-    const fibers = this.registryFibers()
+    const fibers = registryFibers(this.ctx)
     const seenIds = new Set<string>()
     const views: PluginFiberView[] = []
 
@@ -211,39 +196,36 @@ export class PluginManager {
       const id = isSelfFiber ? (this.selfRowId() ?? rawId) : rawId
       // 全局 MCP 行（home patch 的 mcp-client 桥接）不再作为插件行展示；
       // 改由「新增 MCP」发现，选中后进白名单、以会话 MCP 行出现在列表。
-      if (this.isMcpClientConfig(fiber.config)) continue
+      if (isMcpClientConfig(fiber.config)) continue
       const state = typeof fiber.state === 'number' ? fiber.state : 0
       // 去重：同一插件类在多个 context（host/agent/session）挂载，只保留一个（优先 active）。
       const existing = views.find(v => v.id === id)
       if (existing !== undefined) {
         if (existing.state !== 2 && state === 2) {
           existing.state = 2
-          existing.stateLabel = 'active'
           existing.active = true
         }
         continue
       }
       seenIds.add(id)
-      const stateLabel = FIBER_LABELS[state] ?? `state:${state}`
       const isSelf = this.isSelf(id) || isSelfFiber
       const packageName = patchRows.find(r => String(r.id) === id)?.name
         ?? specs.find(s => s.id === id)?.name
       const isUserBundle = typeof packageName === 'string' && userBundleNames.has(packageName)
       // 提升待完成（bundle 已移除、patch 行待重启后写入）：fiber 仍在 registry 说明冻结 bundle 还在跑。
       const pendingPromote = specs.find(s => s.id === id)?.pendingPromote === true
-      const source: PluginSource = isSelf ? 'patch' : (patchIds.has(id) ? 'patch' : (isUserBundle ? 'bundle' : (pendingPromote ? 'patch' : 'core')))
+      const source = this.classifySource(isSelf, patchIds.has(id), isUserBundle, pendingPromote)
       // patch/bundle 行可管理（非面板自身）；core 只读。
       const manageable = (source === 'patch' || source === 'bundle') && !isSelf
-      const protected_ = !manageable || isSelf
+      const isProtected = !manageable || isSelf
       const pendingRestart = pendingPromote && !isSelf
 
       views.push({
         id,
         source,
         state,
-        stateLabel,
         active: state === 2,
-        protected: protected_,
+        protected: isProtected,
         manageable,
         isSelf,
         ...(pendingRestart ? { pendingRestart: true } : {}),
@@ -261,7 +243,6 @@ export class PluginManager {
         id,
         source: 'mcp',
         state: isConnected ? 2 : -1,
-        stateLabel: isConnected ? 'active' : 'stopped',
         active: isConnected,
         protected: false,
         manageable: true,
@@ -279,7 +260,6 @@ export class PluginManager {
         id: spec.id,
         source: specSource,
         state: -1,
-        stateLabel: 'stopped',
         active: false,
         protected: false,
         manageable: specSource === 'patch' || specSource === 'bundle',
@@ -295,8 +275,7 @@ export class PluginManager {
   // ---- patch 行读 / 写 ----
 
   private readPatchText(): string {
-    if (!existsSync(this.patchFile)) return ''
-    return readFileSync(this.patchFile, 'utf8').replace(/^\uFEFF/, '')
+    return readTextFileSync(this.patchFile) ?? ''
   }
 
   /** 解析 patch 文件为顶层 PatchOption[]（非法/空 → 空数组）。 */
@@ -330,8 +309,10 @@ export class PluginManager {
   private readBundleNames(): string[] {
     const pkgFile = join(this.profileDir, 'package.json')
     if (!existsSync(pkgFile)) return []
+    const text = readTextFileSync(pkgFile)
+    if (text === undefined) return []
     try {
-      const pkg = JSON.parse(readFileSync(pkgFile, 'utf8')) as { dsh?: { profile?: { bundles?: unknown } } }
+      const pkg = JSON.parse(text) as { dsh?: { profile?: { bundles?: unknown } } }
       const bundles = pkg?.dsh?.profile?.bundles
       return Array.isArray(bundles) ? bundles.filter((b): b is string => typeof b === 'string') : []
     } catch {
@@ -343,15 +324,15 @@ export class PluginManager {
   private writeBundleNames(bundleNames: string[]): { ok: true } | { ok: false; reason: string } {
     const pkgFile = join(this.profileDir, 'package.json')
     if (!existsSync(pkgFile)) return { ok: false, reason: 'profile package.json not found' }
+    const text = readTextFileSync(pkgFile)
+    if (text === undefined) return { ok: false, reason: 'profile package.json not readable' }
     try {
-      const pkg = JSON.parse(readFileSync(pkgFile, 'utf8')) as { dsh?: { profile?: { bundles?: unknown } } }
+      const pkg = JSON.parse(text) as { dsh?: { profile?: { bundles?: unknown } } }
       if (pkg.dsh === undefined) pkg.dsh = {}
       if (pkg.dsh.profile === undefined) pkg.dsh.profile = {}
       pkg.dsh.profile.bundles = bundleNames
-      writeFileSync(pkgFile + '.bak', readFileSync(pkgFile, 'utf8'), 'utf8')
-      const tmp = pkgFile + '.tmp'
-      writeFileSync(tmp, JSON.stringify(pkg, null, 2) + '\n', 'utf8')
-      renameSync(tmp, pkgFile)
+      writeFileSync(pkgFile + '.bak', text, 'utf8')
+      atomicWriteFileSync(pkgFile, JSON.stringify(pkg, null, 2) + '\n')
       return { ok: true }
     } catch (error) {
       return { ok: false, reason: `write package.json failed: ${error instanceof Error ? error.message : String(error)}` }
@@ -363,24 +344,19 @@ export class PluginManager {
    * 写保护：备份 + 解析校验 + 原子写。
    */
   private writePatch(rows: PatchRow[]): { ok: true } | { ok: false; reason: string } {
-    let options = this.readPatchOptions()
+    const options = this.readPatchOptions()
     // 从所有 insert 块收集现有非「面板管理行」的其它 patch 选项/行，避免丢用户手工内容。
     // 简化：保留所有既有 option；把用户插件行统一重写到第一个（或新增）insert 块。
     const kept: PatchOption[] = []
-    let hasInsert = false
     for (const opt of options) {
       if (opt !== null && typeof opt === 'object' && Array.isArray(opt.insert)) {
         // 丢弃旧 insert 块（用户插件行由 rows 整体重写）；其它 insert 块（如 home 场景）——
         // 这里只管理活动 profile 文件，其 insert 即用户插件行，故整体重建。
-        hasInsert = true
         continue
       }
       kept.push(opt)
     }
-    const insertOption: PatchOption = { insert: rows }
-    const nextOptions: PatchOption[] = hasInsert
-      ? [insertOption, ...kept]
-      : [insertOption, ...kept]
+    const nextOptions: PatchOption[] = [{ insert: rows }, ...kept]
 
     let nextText: string
     try {
@@ -402,9 +378,7 @@ export class PluginManager {
       if (existsSync(this.patchFile)) {
         writeFileSync(this.patchFile + '.bak', this.readPatchText(), 'utf8')
       }
-      const tmp = this.patchFile + '.tmp'
-      writeFileSync(tmp, nextText, 'utf8')
-      renameSync(tmp, this.patchFile)
+      atomicWriteFileSync(this.patchFile, nextText)
     } catch (error) {
       return { ok: false, reason: `write patch failed: ${error instanceof Error ? error.message : String(error)}` }
     }
@@ -440,6 +414,7 @@ export class PluginManager {
     const rows = this.readPatchRows().filter(r => String(r.id) !== id)
     const result = this.writePatch(rows)
     if (!result.ok) return { ok: false, reason: result.reason }
+    this.syncSpecs()
     return { ok: true, id, enabled: false }
   }
 
@@ -479,6 +454,7 @@ export class PluginManager {
     rows.push({ id, name })
     const result = this.writePatch(rows)
     if (!result.ok) return { ok: false, reason: result.reason }
+    this.syncSpecs()
     return { ok: true, id, enabled: true }
   }
 
@@ -496,6 +472,7 @@ export class PluginManager {
     rows.push({ id: id.trim(), name: name.trim() })
     const result = this.writePatch(rows)
     if (!result.ok) return { ok: false, reason: result.reason }
+    this.syncSpecs()
     return { ok: true, id: id.trim() }
   }
 
@@ -542,15 +519,15 @@ export class PluginManager {
   private rewriteBundleToPatch(packageName: string): { ok: true } | { ok: false; reason: string } {
     const pkgFile = join(this.profileDir, 'node_modules', packageName, 'package.json')
     if (!existsSync(pkgFile)) return { ok: false, reason: `找不到 "${packageName}" 的 package.json` }
+    const text = readTextFileSync(pkgFile)
+    if (text === undefined) return { ok: false, reason: `找不到 "${packageName}" 的 package.json` }
     try {
-      const pkg = JSON.parse(readFileSync(pkgFile, 'utf8')) as { dsh?: { bundle?: unknown; [k: string]: unknown } }
+      const pkg = JSON.parse(text) as { dsh?: { bundle?: unknown; [k: string]: unknown } }
       if (pkg.dsh?.bundle === undefined) return { ok: true } // 已无 bundle 声明，no-op
-      writeFileSync(pkgFile + '.bak', readFileSync(pkgFile, 'utf8'), 'utf8')
+      writeFileSync(pkgFile + '.bak', text, 'utf8')
       delete pkg.dsh.bundle
       if (Object.keys(pkg.dsh).length === 0) delete pkg.dsh
-      const tmp = pkgFile + '.tmp'
-      writeFileSync(tmp, JSON.stringify(pkg, null, 2) + '\n', 'utf8')
-      renameSync(tmp, pkgFile)
+      atomicWriteFileSync(pkgFile, JSON.stringify(pkg, null, 2) + '\n')
       return { ok: true }
     } catch (error) {
       return { ok: false, reason: `rewrite ${packageName} failed: ${error instanceof Error ? error.message : String(error)}` }
@@ -561,8 +538,9 @@ export class PluginManager {
 
   private readSpecs(): UserPluginSpec[] {
     if (!existsSync(this.stateFile)) return []
+    const text = readTextFileSync(this.stateFile)
+    if (text === undefined) return []
     try {
-      const text = readFileSync(this.stateFile, 'utf8').replace(/^\uFEFF/, '')
       const data = JSON.parse(text) as { plugins?: unknown }
       const list = Array.isArray(data?.plugins) ? data.plugins : []
       return list.filter((s): s is UserPluginSpec => {
@@ -577,7 +555,7 @@ export class PluginManager {
   private persistSpecs(specs: UserPluginSpec[]): void {
     try {
       mkdirSync(dirname(this.stateFile), { recursive: true })
-      writeFileSync(this.stateFile, JSON.stringify({ plugins: specs }, null, 2), 'utf8')
+      atomicWriteFileSync(this.stateFile, JSON.stringify({ plugins: specs }, null, 2))
     } catch {
       // 状态文件写失败不阻断启停（只是跨会话还原失效）。
     }
