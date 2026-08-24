@@ -87,7 +87,7 @@ interface PatchOption {
 }
 
 export type PluginToggleResult =
-  | { ok: true; id: string; enabled: boolean }
+  | { ok: true; id: string; enabled: boolean; restartRequired?: true }
   | { ok: false; reason: string }
 
 export type PluginInstallResult =
@@ -193,11 +193,15 @@ export class PluginManager {
     const fibers = registryFibers(this.ctx)
     const seenIds = new Set<string>()
     const views: PluginFiberView[] = []
+    // M1 修复：给 unnamed fiber 分配唯一展示 id，避免多个无 name 的插件被去重合并成
+    // 一个 '(unnamed)' 而静默隐藏其余。它们仍是 core 只读行，仅保证各自可见。
+    let unnamedSeq = 0
 
     for (const fiber of fibers) {
-      const rawId = typeof fiber.name === 'string' && fiber.name !== '' ? fiber.name : '(unnamed)'
+      const hasName = typeof fiber.name === 'string' && fiber.name !== ''
+      const rawId = hasName ? fiber.name as string : `(unnamed #${++unnamedSeq})`
       // 面板自身 fiber 的 runtime 名是类名（SkillControlPlugin），展示用行 id（dshp-skill-panel）。
-      const isSelfFiber = rawId === this.selfFiberName()
+      const isSelfFiber = hasName && rawId === this.selfFiberName()
       const id = isSelfFiber ? (this.selfRowId() ?? rawId) : rawId
       // 全局 MCP 行（home patch 的 mcp-client 桥接）不再作为插件行展示；
       // 改由「新增 MCP」发现，选中后进白名单、以会话 MCP 行出现在列表。
@@ -347,21 +351,30 @@ export class PluginManager {
   /**
    * 写回 patch 文件：保证用户插件行都在单个 insert 块里。
    * 写保护：备份 + 解析校验 + 原子写。
+   *
+   * 数据保全（H1 修复）：既有 patch 里的**非面板管理行**必须保留——面板只管理
+   * 字符串 id 的行，而 YAML 允许 id 为数字等非字符串值。若整体重建丢这些行，
+   * 任意一次启停/安装都会静默删掉用户手工配置。故这里保留既有所有非字符串 id
+   * 的行，仅用传入的 rows（面板管理行）重建字符串 id 部分。
    */
   private writePatch(rows: PatchRow[]): { ok: true } | { ok: false; reason: string } {
     const options = this.readPatchOptions()
-    // 从所有 insert 块收集现有非「面板管理行」的其它 patch 选项/行，避免丢用户手工内容。
-    // 简化：保留所有既有 option；把用户插件行统一重写到第一个（或新增）insert 块。
+    // 从所有既有 insert 块收集「非面板管理」的行（id 非字符串）与其它 patch 选项。
+    // 面板管理的行（字符串 id）由传入 rows 整体决定；非字符串 id 行必须原样保留。
+    const preservedNonManaged: PatchRow[] = []
     const kept: PatchOption[] = []
     for (const opt of options) {
       if (opt !== null && typeof opt === 'object' && Array.isArray(opt.insert)) {
-        // 丢弃旧 insert 块（用户插件行由 rows 整体重写）；其它 insert 块（如 home 场景）——
-        // 这里只管理活动 profile 文件，其 insert 即用户插件行，故整体重建。
+        for (const row of opt.insert) {
+          if (row !== null && typeof row === 'object' && typeof row.id !== 'string') {
+            preservedNonManaged.push(row)
+          }
+        }
         continue
       }
       kept.push(opt)
     }
-    const nextOptions: PatchOption[] = [{ insert: rows }, ...kept]
+    const nextOptions: PatchOption[] = [{ insert: [...preservedNonManaged, ...rows] }, ...kept]
 
     let nextText: string
     try {
@@ -419,8 +432,19 @@ export class PluginManager {
     const rows = this.readPatchRows().filter(r => String(r.id) !== id)
     const result = this.writePatch(rows)
     if (!result.ok) return { ok: false, reason: result.reason }
+    // M2 修复：patch 行也可能同时挂在 dsh.profile.bundles（如 reconcile 自动加回的双挂载）。
+    // 停用应"原子"撤两处，否则 bundle 残留会让插件重启后仍在跑、UI 却显示已停用。
+    // bundle 移除是冷挂载，需重启才完全生效，故标注 restartRequired。
+    let removedBundle = false
+    const packageName = view.packageName
+    if (typeof packageName === 'string' && this.readBundleNames().includes(packageName)) {
+      const bundles = this.readBundleNames().filter(n => n !== packageName)
+      const rmResult = this.writeBundleNames(bundles)
+      if (!rmResult.ok) return { ok: false, reason: rmResult.reason }
+      removedBundle = true
+    }
     this.syncSpecs()
-    return { ok: true, id, enabled: false }
+    return { ok: true, id, enabled: false, ...(removedBundle ? { restartRequired: true as const } : {}) }
   }
 
   /** 启用：patch 行加回 cordis.patch.yml（热重载）；bundle 行加回 dsh.profile.bundles（冷挂载，需重启）；mcp 行连接会话。 */

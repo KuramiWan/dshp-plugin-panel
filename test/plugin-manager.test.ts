@@ -174,3 +174,88 @@ test('state 文件: install 后写入 .dshp-plugins.json（跨会话还原用）
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('H1: install 不应丢弃既有非字符串 id 的 patch 行（数据保护）', () => {
+  const { root, manager } = makeManager()
+  try {
+    // 既有的 patch 含一行 id 为数字（YAML 允许 id: 123）的行 + 一行字符串 id。
+    // writePatch 从 readPatchRows() 重建（只收字符串 id），会丢数字 id 行 —— 这是 H1 缺陷。
+    writeFileSync(patchFile(root), [
+      '- insert:',
+      '    - id: 123',
+      '      name: "@x/numeric-id"',
+      '    - id: keep-me',
+      '      name: "@x/string-id"',
+      '',
+    ].join('\n'), 'utf8')
+
+    manager.install('new-p', '@x/new')
+
+    const parsed = parseYaml(readFileSync(patchFile(root), 'utf8')) as Array<{ insert?: Array<{ id: unknown; name: unknown }> }>
+    const allRows = parsed.flatMap(o => o.insert ?? [])
+    const ids = allRows.map(r => String(r.id))
+    // 期望：既有行（含数字 id 123）都应保留 —— 当前实现会丢行 123，此断言失败即证实 H1。
+    assert.ok(ids.includes('123'), `数字 id 行应被保留，但实际丢失；当前 id 集: ${ids.join(',')}`)
+    assert.ok(ids.includes('keep-me'))
+    assert.ok(ids.includes('new-p'))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('M1: 多个 unnamed fiber 应各自可见，不应合并成一个 (unnamed)', () => {
+  // registry 有两个 name 为空的 fiber（非 mcp），list() 应返回 2 条。
+  // 当前实现把两者都映射到 id="(unnamed)" 并去重，只留一个 —— M1 缺陷。
+  const root = mkdtempSync(join(testRoot, 'profile-'))
+  const manager = new PluginManager(
+    makeCtx({}, [
+      { config: { foo: 1 } },
+      { config: { bar: 2 } },
+    ]),
+    makeMcpStub(),
+    root,
+  )
+  try {
+    const views = manager.list()
+    assert.equal(views.length, 2, `两个 unnamed fiber 应各占一条视图，实际 ${views.length} 条`)
+    assert.notEqual(views[0].id, views[1].id, '两个 unnamed fiber 的 id 不应相同')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('M2: 双挂载（patch + bundle）disable 时同步撤 bundle，并标注需重启', async () => {
+  const root = mkdtempSync(join(testRoot, 'profile-'))
+  // patch 里有一行 dup-plugin
+  writeFileSync(join(root, 'cordis.patch.yml'), [
+    '- insert:',
+    '    - id: dup-plugin',
+    '      name: "@user/dup-plugin"',
+    '',
+  ].join('\n'), 'utf8')
+  // bundles 里也挂同名包（reconcile 自动加回的双挂载）
+  writeFileSync(join(root, 'package.json'), JSON.stringify({
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@user/dup-plugin'] } },
+  }))
+  const manager = new PluginManager(
+    makeCtx({}, [{ name: 'dup-plugin', config: { pkg: '@user/dup-plugin' }, state: 2 }]),
+    makeMcpStub(),
+    root,
+  )
+  try {
+    const view = manager.list().find(v => v.id === 'dup-plugin')
+    assert.equal(view?.active, true)
+    const res = await manager.disable('dup-plugin')
+    assert.equal(res.ok, true)
+    assert.equal((res as { restartRequired?: boolean }).restartRequired, true, '双挂载停用应标注需重启')
+    // patch 行已摘
+    const patchText = readFileSync(patchFile(root), 'utf8')
+    assert.ok(!patchText.includes('dup-plugin'), 'patch 行应被移除')
+    // bundle 也应已摘
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    assert.ok(!pkg.dsh.profile.bundles.includes('@user/dup-plugin'), 'bundle 应同步移除')
+    assert.ok(pkg.dsh.profile.bundles.includes('@deepseek-ai/dsh-base'), '其它 bundle 不受影响')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
