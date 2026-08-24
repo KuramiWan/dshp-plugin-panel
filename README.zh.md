@@ -4,28 +4,34 @@
 [![MIT](https://img.shields.io/badge/license-MIT-0B7285?style=flat-square)](LICENSE)
 [![DSH](https://img.shields.io/badge/DSH-Web-5B4CF0?style=flat-square)](cordis.patch.yml)
 
-**DeepSeek Harness 的会话级技能与插件管理 —— 一个浏览器面板、模型工具和斜杠命令，管理你的技能、会话 MCP 和宿主组合层插件。**
+**为 DeepSeek Harness 开发的会话级插件管理面板。随时添加、移除你的插件，热插拔生效，会话隔离，便捷的可视化面板。同时管理插件、skills、MCP。**
 
-🚀 会话级管理 | 方便的面板 | 面板、命令、工具始终同步 | 插件管理 | 一条命令安装
+🚀 会话级技能 | 可视化面板 | 插件 & MCP 管理 | 多数改动免重启 | 一条命令安装
 
-[Highlights](#highlights) | [Who it is for](#who-it-is-for) | [Quick start](#quick-start) | [Toolbox](#toolbox) | [How it works](#how-it-works) | [Plugin management](#plugin-management) | [Troubleshooting](#troubleshooting) | [FAQ](#faq)
+[Highlights](#highlights) | [Who it is for](#who-it-is-for) | [Quick start](#quick-start) | [Skill management](#skill-management) | [Plugins and MCP](#plugins-and-mcp) | [How it works](#how-it-works) | [Troubleshooting](#troubleshooting) | [FAQ](#faq)
 
 🌐 [English](README.md) | **中文**
 
+> **版本说明。** 本 README 描述当前发布版本。若你的安装里缺少文档中的某项能力，请对照 [CHANGELOG.md](CHANGELOG.md) 检查已安装版本。
+
 ## Highlights
 
+**技能**
+
 - **会话级技能管理。** 按会话引入、移除技能 —— 每个会话有自己隔离的技能集，影子覆盖只作用于本会话，会话之间互不泄漏；引入集在宿主重启后依然保留。
-- **方便的管理面板。** 浏览器设置页里一个可视化面板，总览「本地技能」和「本会话已引入」两区 —— 搜索、展开详情、一键引入/移除。
-- **处处同步。** 面板、`session_skill_*` 模型工具、`/skill-*` 斜杠命令操作的是同一份技能 —— 在任意一处引入或移除，其它地方立刻一致。
-- **插件管理。** 管理 DSH 已加载的插件 —— 启用/停用用户安装的插件、把 bundle 插件提升为热插拔、管理会话 MCP 连接，都在同一个面板里。
-- **技能来自你自己的文件夹。** 技能放在你的本地文件夹（`~/.dsh/.skill-pool/local/`）。放一个文件夹进去即纳入管理，删掉即移出。本包不预置技能、不做订阅、不做目录。
+- **一个技能视图。**「技能」页签展示全局层（`~/.dsh/skills`）、可用池（`~/.dsh/.skill-pool/local/`）、本会话已引入三层 —— 搜索、展开详情、引入/激活/打 tag，一键完成。
+
+**插件 & MCP**
+
+- **插件管理。** 启用/停用用户安装的插件、新增插件、把 bundle 插件提升为热插拔 —— 全在「插件」页签里，无需手改配置文件。
+- **会话 MCP。** 按会话添加、拆除会话级 MCP 连接，与全局配置互相独立。
 
 ## Who it is for
 
-1. 你想让模型自己发现并加载技能 —— `session_skill_*` 工具让模型自主浏览、搜索、引入、移除技能。
-2. 你想直接在对话里控制技能 —— `/skill-*` 命令面向人类，不经模型。
-3. 你想要一个可视化总览 —— 技能面板在设置页里同时展示「本地技能」和「本会话已引入」两区。
-4. 你想管理 DSH 的插件 —— 面板的「插件」页签可启用/停用用户安装的插件、把 bundle 插件提升为热插拔、管理会话 MCP 连接。
+1. 你想要一个可视化总览，在一个设置节里用鼠标控制你的技能与插件。
+2. 你想要技能按会话隔离 —— 一个会话引入的，不进入任何其它会话。
+3. 你想启用/停用或热插拔 DSH 插件，而不必重启宿主。
+4. 你想要按会话的 MCP 连接，而不用手改配置。
 
 ## Quick start
 
@@ -41,79 +47,62 @@ dsh plugin --profile web add @super_camel/dsh-skill-panel
 dsh plugin --profile web add github:kuramiwan/dshp-skill-panel
 ```
 
-### 2. 重启并确认
+### 2. 重启并打开面板
 
-重启 `dsh web`，打开 **设置 → 技能面板（Skill Panel）**。你会看到两区：本地技能，以及本会话已引入的技能。
+重启 `dsh web`，打开 **设置 → 技能面板（Skill Panel）**。你会看到两个页签：
 
-### 3. 使用
+- **技能** —— 全局层、可用池、本会话已引入。
+- **插件** —— DSH 已加载的插件，以及会话 MCP。
+
+### 3. 试一试
+
+在「技能」页签里搜索你的可用池并引入一个技能 —— 它只在本会话可用。在「插件」页签里切换一个插件，立即生效（patch 挂载）。
+
+## Skill management
+
+「技能」页签是日常入口，展示三组：
+
+- **全局层**（`~/.dsh/skills`）—— 进程级、每个会话都可见的技能；可激活/停用、打 tag。（全局生效）
+- **可用池**（`~/.dsh/.skill-pool/local/`）—— 你自己管理的技能。放一个文件夹进去即纳入管理，删掉即移出。（此处的技能不会在任何地方生效）
+- **本会话** —— 从可用池引入到当前会话的技能；在这里移除，立刻消失。（会话级别生效）
+
+> ! 会话级引入skill需要先将其从全局层停用，即可从可用池随时引入。
+
+技能支持搜索、展开详情，并用徽章标记 **global** / **introduced**。
+
+<details>
+<summary><b>高级工具 —— 斜杠命令与模型工具</b></summary>
+
+同样的操作也可脱离面板进行，方便自动化或交给模型：
 
 ```text
-/skill-browse            # 列出本地技能
-/skill-search <query>    # 搜索本地技能
-/skill-introduce <name>  # 把技能引入本会话
-/skill-list              # 列出本会话已引入的技能
-/skill-remove <name>     # 从本会话移除技能
+/skill-browse            列出你的可用技能
+/skill-search <query>    搜索你的可用技能
+/skill-introduce <id>    把技能引入本会话
+/skill-list              列出本会话已引入的技能
+/skill-remove <id>       从本会话移除技能
 ```
 
-或者直接问模型 —— 它自己就能调用 `session_skill_*` 工具。
+模型也可以自己调用 `session_skill_browse`、`session_skill_search`、`session_skill_list`、`session_skill_introduce`、`session_skill_remove`。
 
-## Toolbox
+</details>
 
-### 模型工具
+## Plugins and MCP
 
-由模型自主调用：
-
-| 工具 | 作用 |
-| --- | --- |
-| `session_skill_browse` | 列出本地技能，可带查询过滤 |
-| `session_skill_search` | 按关键词搜索本地技能 |
-| `session_skill_list` | 列出本会话已引入的技能 |
-| `session_skill_introduce` | 把本地技能引入本会话 |
-| `session_skill_remove` | 从本会话移除技能 |
-
-### 斜杠命令
-
-由你直接调用：
-
-| 命令 | 作用 |
-| --- | --- |
-| `/skill-browse [query]` | 列出本地技能，可带查询过滤 |
-| `/skill-search <query>` | 按关键词搜索本地技能 |
-| `/skill-list` | 列出本会话已引入的技能 |
-| `/skill-introduce <name>` | 把本地技能引入本会话 |
-| `/skill-remove <name>` | 从本会话移除技能 |
-
-### 技能面板
-
-浏览器设置页里的一个节，含「本地技能 + 本会话已引入」两区，支持搜索、详情展开、影子覆盖标注。它还有一个「插件」页签，用于管理 DSH 已加载的插件（见 [插件管理](#plugin-management)）。
-
-## How it works
-
-面板、模型工具、斜杠命令操作的是同一个会话隔离的技能列表。技能从你的本地文件夹读取，每个会话的引入集落盘保存。
-
-```mermaid
-flowchart LR
-    Tools["模型工具<br/>session_skill_*"] --> Skills["会话技能<br/>按会话隔离"]
-    Cmds["斜杠命令<br/>/skill-*"] --> Skills
-    Panel["技能面板<br/>浏览器设置页"] --> Skills
-    Skills --> Folder["你的本地技能文件夹<br/>~/.dsh/.skill-pool/local/"]
-    Skills --> Set["引入集<br/>.session-skills/sessionId.json"]
-```
-
-引入技能是纯会话注册 —— 不复制文件，注册的资源目录指回原文件夹。全局技能层（`~/.dsh/skills`、`~/.agents/skills`、项目 `.dsh/skills`）是进程级、全会话可见，因此本插件不管理、不展示它们。
-
-## Plugin management
-
-面板的「插件」页签列出 DSH 已加载的插件，按挂载方式分组：
+「插件」页签列出 DSH 已加载的插件，按挂载方式分组：
 
 - **系统内置** —— 随 DSH 提供，只读。
 - **用户安装（patch）** —— 从 `cordis.patch.yml` 挂载；启用/停用立即生效，无需重启。
 - **用户安装（bundle）** —— 从 `dsh.profile.bundles` 挂载；启用/停用需重启。
 - **MCP** —— 会话级连接，单独管理。
 
+### 新增插件
+
+**「新增插件」** 按钮可让你直接从面板注册插件 —— 填入包名（或 id），面板即安装并挂载它，使其出现在受管插件列表里。
+
 ### 让 bundle 插件热插拔
 
-用 `dsh plugin add` 安装、且声明了 `dsh.bundle.patch` 的插件会以 **bundle** 方式挂载：DSH 只在启动时读取一次 `dsh.profile.bundles`，所以启用/停用要重启才生效。
+用 `dsh plugin install` 安装、且声明了 `dsh.bundle.patch` 的插件会以 **bundle** 方式挂载：DSH 只在启动时读取一次 `dsh.profile.bundles`，所以启用/停用要重启才生效。
 
 **「提升为热插拔」** 按钮把 bundle 插件转成 patch 插件，之后即可免重启启停：
 
@@ -135,13 +124,60 @@ flowchart LR
 
 安装会深入 DSH 内部的插件前，先确认它 patch 了什么、能否干净地回退。
 
+### Session MCP
+
+会话 MCP 连接只作用于当前会话。白名单一个服务器、为本会话连上、用完断开 —— 面板把它隔离在全局配置之外。
+
+<details><summary>面向模型的 MCP 工具</summary>
+
+模型可以自己用 `session_mcp_list`、`session_mcp_connect`、`session_mcp_disconnect` 管理会话 MCP。
+
+</details>
+
+## How it works
+
+面板和它的工具操作的是同一份**本会话**技能集。引入技能是纯会话注册 —— 不复制文件，注册的资源目录指回原文件夹。本会话的引入集落盘保存，会话恢复时自动重放。
+
+```mermaid
+flowchart LR
+    subgraph Entrances["三种入口"]
+        Tools["模型工具<br/>session_skill_*"]
+        Cmds["斜杠命令<br/>/skill-*"]
+        Panel["技能面板"]
+    end
+    Entrances --> Session["本会话技能集<br/>按会话隔离"]
+    Session -->|"指回原文件夹，不复制"| Folders["你的技能<br/>local/ 池 + 全局 ~/.dsh/skills"]
+    Session -->|"落盘持久"| Persist[".session-skills/sessionId.json"]
+```
+
+插件与会话 MCP（另一个页签）由面板直接管理 —— 见 [Plugins & MCP](#plugins-and-mcp)。
+
 ## Troubleshooting
 
 | 问题 | 怎么办 |
 | --- | --- |
-| 空白新会话里命令结果不显示 | DSH 客户端有意不把命令节点当会话内容。发一条消息或刷新，或在有对话历史的会话里使用命令。 |
-| 放进本地文件夹的技能没出现 | 确认它是 `~/.dsh/.skill-pool/local/` 下含 `SKILL.md` 的子目录。 |
-| 全局技能（`~/.dsh/skills` 等）不显示 | 那些是进程级，本插件不管理、不展示；只管理 `local/` 文件夹和会话引入集。 |
+| 空白新会话里命令结果不显示 | DSH 客户端有意不把命令节点当会话内容。发一条消息或刷新，或在有会话历史的会话里使用命令。 |
+| 放进可用池的技能没出现 | 确认它是 `~/.dsh/.skill-pool/local/` 下含 `SKILL.md` 的子目录。 |
+| 全局层（`~/.dsh/skills`）里的技能没出现 | 确认它是 `~/.dsh/skills` 下含 `SKILL.md` 的子目录；全局层会显示在技能页签的全局分组里。 |
+| 出问题但说不清原因 | 跑一次插件调试器，一次导出状态 + 最近错误日志（见下文）。 |
+
+### 调试插件
+
+面板附带一个独立、只读的诊断脚本，一条命令检查插件状态和最近错误日志 —— 它不需要宿主在运行，也从不修改文件。
+
+```sh
+pnpm debug                       # 文本导出：池扫描 + 会话引入集 + 配置 + 一致性检查
+pnpm debug --json                # 同一份数据，结构化 JSON
+pnpm debug --root <dir>          # 覆盖池根目录
+pnpm debug --profile <dir>       # 覆盖 DSH profile 根目录
+pnpm debug --logs 20             # 最多包含 20 条最近的 error/warn 日志
+```
+
+> **注意：** `pnpm debug` 脚本是**开发/源码工具**，**不会**随发布的 npm bundle 一起发布（bundle 只含 `lib/index.js`、`lib/client.js`、`cordis.patch.yml`），且需要 Node ≥ 22.6 —— 请克隆仓库后在源码树里运行。
+
+结构化日志会通过 `ctx.logger` 追加到 `<dshHome>/.dshp-skill-panel.log`（JSON Lines），因此调试器的错误线索与宿主实时日志来自同一数据源。
+
+> **Agent 指南**：面向 AI agent 的可观测性/调试工作流（埋点规范、调试器协议、兼容性、五步诊断）已沉淀在 [`docs/observability-sop.md`](./docs/observability-sop.md)。
 
 ## FAQ
 
@@ -155,7 +191,15 @@ flowchart LR
 
 **这个包会预置技能吗？**
 
-不会。它只管理你自己的本地文件夹 —— 不预置技能、不做订阅、不做目录。
+不会。它只管理你自己的文件夹 —— 不预置技能、不做订阅、不做目录。
+
+**为什么我装好的技能不显示？**
+
+如果技能不可见，请确认它在受管层（`local/` 或 `~/.dsh/skills`）下、是含 `SKILL.md` 的子目录，然后刷新面板。
+
+## 贡献
+
+开发环境搭建、构建与测试见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## License
 

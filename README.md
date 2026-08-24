@@ -4,28 +4,33 @@
 [![MIT](https://img.shields.io/badge/license-MIT-0B7285?style=flat-square)](LICENSE)
 [![DSH](https://img.shields.io/badge/DSH-Web-5B4CF0?style=flat-square)](cordis.patch.yml)
 
-**Session-level skill and plugin management for DeepSeek Harness — a browser panel, model tools, and slash commands that control your skills, session MCP, and host-composition plugins.**
+**Session-level skill and plugin management for DeepSeek Harness — a browser panel that controls your skills, plugins, and session MCP, all in one settings section.**
 
-🚀 Session-level management | Convenient panel | Panel, commands, and tools stay in sync | Plugin management | Install with one command
+🚀 Session-level skills | Visual panel | Plugin & MCP management | No restart for most changes | One-command install
 
-[Highlights](#highlights) | [Who it is for](#who-it-is-for) | [Quick start](#quick-start) | [Toolbox](#toolbox) | [How it works](#how-it-works) | [Plugin management](#plugin-management) | [Troubleshooting](#troubleshooting) | [FAQ](#faq)
+[Highlights](#highlights) | [Who it is for](#who-it-is-for) | [Quick start](#quick-start) | [Skill management](#skill-management) | [Plugins and MCP](#plugins-and-mcp) | [How it works](#how-it-works) | [Troubleshooting](#troubleshooting) | [FAQ](#faq)
 
 🌐 **English** | [中文](README.zh.md)
 
+> **Version note.** This README describes the current release. If a documented capability is missing in your build, check the installed version against the changelog in [CHANGELOG.md](CHANGELOG.md).
+
 ## Highlights
 
-- **Session-level skill management.** Introduce and remove skills per session — each session keeps its own isolated set, shadow overrides stay local, and nothing leaks between sessions. The introduced set survives host restarts.
-- **A convenient management panel.** A browser settings section gives you a visual overview of your local skills and the current session's skills — search, expand details, and introduce or remove with a click.
-- **Everything stays in sync.** The panel, the `session_skill_*` model tools, and the `/skill-*` slash commands all control the same skills — introduce or remove a skill in one place and it shows up everywhere.
-- **Plugin management.** Manage the plugins DSH has loaded — enable/disable user-installed plugins, promote bundle plugins to hot-pluggable, and manage session MCP connections, all from the same panel.
-- **Skills come from your own folder.** Skills live in your local folder (`~/.dsh/.skill-pool/local/`). Add a folder to manage a skill, delete it to remove it. This package ships no skills and does no subscription or catalog.
+**Skills**
+- **Session-level skill management.** Introduce and remove skills per session — each session keeps its own isolated set, shadow overrides stay local, nothing leaks between sessions, and the introduced set survives host restarts.
+- **A single skill view.** The **Skills** tab shows the global layer (`~/.dsh/skills`), your available pool (`~/.dsh/.skill-pool/local/`), and the current session's introduced set — search, expand details, and introduce, activate, or tag with a click.
+
+**Plugins & MCP**
+
+- **Plugin management.** Enable/disable user-installed plugins, add new ones, and promote bundle plugins to hot-pluggable — all from the **Plugins** tab, without editing config files.
+- **Session MCP.** Add and tear down session-scoped MCP connections per session, independently from global config.
 
 ## Who it is for
 
-1. You want the model to discover and load skills on its own — the `session_skill_*` tools let it browse, search, introduce, and remove skills autonomously.
-2. You want to control skills directly from the chat — the `/skill-*` commands are for humans, no model in the loop.
-3. You want a visual overview — the Skill Panel shows your local skills and the current session's introduced skills in one settings section.
-4. You want to manage DSH's plugins — the panel's Plugins tab lets you enable/disable user-installed plugins, promote bundle plugins to hot-pluggable, and manage session MCP connections.
+1. You want a visual overview and click control of your skills and plugins in one settings section.
+2. You want skills scoped per session — what one session introduces stays out of every other.
+3. You want to enable/disable or hot-plug DSH plugins without restarting the host.
+4. You want per-session MCP connections without hand-editing config.
 
 ## Quick start
 
@@ -41,79 +46,62 @@ Or install from source:
 dsh plugin --profile web add github:kuramiwan/dshp-skill-panel
 ```
 
-### 2. Restart and check
+### 2. Restart and open the panel
 
-Restart `dsh web`, then open **Settings → 技能面板 (Skill Panel)**. You should see two views: your local skills, and the skills introduced into the current session.
+Restart `dsh web`, then open **Settings → 技能面板 (Skill Panel)**. You get two tabs:
 
-### 3. Use it
+- **Skills** — the global layer, your available pool, and the current session's introduced set.
+- **Plugins** — the plugins DSH has loaded, plus session MCP.
+
+### 3. Try it
+
+In the **Skills** tab, search your pool and introduce a skill into this session — it becomes available only here. In the **Plugins** tab, toggle a plugin and see it apply immediately (for patch-mounts).
+
+## Skill management
+
+The **Skills** tab is the everyday entry point. It shows three groups:
+
+- **Global layer** (`~/.dsh/skills`) — process-level skills visible to every session; activate or deactivate them, and tag them. (Takes effect globally.)
+- **Available pool** (`~/.dsh/.skill-pool/local/`) — skills you manage yourself. Place a folder here to add a skill, delete it to remove it. (These skills are not active anywhere until introduced.)
+- **This session** — the skills introduced into the current session; remove one here and it disappears immediately. (Takes effect for this session only.)
+
+> **Note:** To introduce a skill at the session level, first deactivate it from the global layer — then it can be introduced from the available pool at any time.
+
+Skills are shown with search, expandable details, and badges marking a skill as **global** or **introduced**.
+
+<details>
+<summary><b>Power tools &mdash; slash commands and model tools</b></summary>
+
+The same actions are also available without the panel, for automation or for the model:
 
 ```text
-/skill-browse            # list your local skills
-/skill-search <query>    # search your local skills
-/skill-introduce <name>  # introduce a skill into this session
-/skill-list              # list this session's skills
-/skill-remove <name>     # remove a skill from this session
+/skill-browse            list your available skills
+/skill-search <query>    search your available skills
+/skill-introduce <id>    introduce a skill into this session
+/skill-list              list this session's skills
+/skill-remove <id>       remove a skill from this session
 ```
 
-Or just ask the model — it can call the `session_skill_*` tools itself.
+The model can also call `session_skill_browse`, `session_skill_search`, `session_skill_list`, `session_skill_introduce`, and `session_skill_remove` itself.
 
-## Toolbox
+</details>
 
-### Model tools
+## Plugins and MCP
 
-Called by the model itself:
-
-| Tool | What it does |
-| --- | --- |
-| `session_skill_browse` | List your local skills, with an optional query filter |
-| `session_skill_search` | Search your local skills by keyword |
-| `session_skill_list` | List the skills introduced into the current session |
-| `session_skill_introduce` | Introduce a local skill into the current session |
-| `session_skill_remove` | Remove a skill from the current session |
-
-### Slash commands
-
-Called by you, directly:
-
-| Command | What it does |
-| --- | --- |
-| `/skill-browse [query]` | List your local skills, with an optional query filter |
-| `/skill-search <query>` | Search your local skills by keyword |
-| `/skill-list` | List the skills introduced into the current session |
-| `/skill-introduce <name>` | Introduce a local skill into the current session |
-| `/skill-remove <name>` | Remove a skill from the current session |
-
-### Skill Panel
-
-A browser settings section with two views — your local skills and the current session's introduced skills — with search, detail expansion, and shadow-override badges. It also has a **Plugins** tab for managing the plugins DSH has loaded (see [Plugin management](#plugin-management)).
-
-## How it works
-
-The panel, the model tools, and the slash commands all operate on the same session-isolated skill list. Skills are read from your local folder, and the per-session introduced set is saved to disk.
-
-```mermaid
-flowchart LR
-    Tools["Model tools<br/>session_skill_*"] --> Skills["Session skills<br/>isolated per session"]
-    Cmds["Slash commands<br/>/skill-*"] --> Skills
-    Panel["Skill Panel<br/>browser settings"] --> Skills
-    Skills --> Folder["Your local skill folder<br/>~/.dsh/.skill-pool/local/"]
-    Skills --> Set["Introduced set<br/>.session-skills/sessionId.json"]
-```
-
-Introducing a skill is a pure session registration — no files are copied; the registered resource points back at the original folder. Global skill layers (`~/.dsh/skills`, `~/.agents/skills`, project `.dsh/skills`) are process-level and visible to every session, so this plugin does not manage or display them.
-
-## Plugin management
-
-The panel's **Plugins** tab lists the plugins DSH has loaded, grouped by how they are mounted:
+The **Plugins** tab lists the plugins DSH has loaded, grouped by how they are mounted:
 
 - **Built-in** — shipped with DSH, read-only.
 - **User-installed (patch)** — mounted from `cordis.patch.yml`; enable/disable takes effect immediately, no restart.
 - **User-installed (bundle)** — mounted from `dsh.profile.bundles`; enable/disable requires a restart.
 - **MCP** — session-level connections, managed separately.
 
+### Adding a plugin
+
+The **Add plugin** button lets you register a plugin from the panel — give its package name (or an id) and the panel installs and mounts it, so it appears among the managed plugins.
+
 ### Making a bundle plugin hot-pluggable
 
-A plugin installed with `dsh plugin add` that declares `dsh.bundle.patch` is mounted as a **bundle**: DSH reads `dsh.profile.bundles` once at startup, so enabling or disabling it only takes effect after a restart.
+A plugin installed with `dsh plugin install` that declares `dsh.bundle.patch` is mounted as a **bundle**: DSH reads `dsh.profile.bundles` once at startup, so enabling or disabling it only takes effect after a restart.
 
 The **Make hot-pluggable** button converts a bundle plugin to a patch plugin, so you can enable and disable it without restarting:
 
@@ -135,27 +123,62 @@ The panel can only mount and unmount a plugin — it cannot undo what a plugin a
 
 Before installing a plugin that reaches into DSH internals, review what it patches and whether it can be cleanly reverted.
 
+### Session MCP
+
+Session MCP connections are scoped to the current session. Whitelist a server, connect it for the session, and disconnect when done — the panel keeps it out of the global config.
+
+<details><summary>Model tools for MCP</summary>
+
+The model can manage session MCP itself with `session_mcp_list`, `session_mcp_connect`, and `session_mcp_disconnect`.
+
+</details>
+
+## How it works
+
+The panel and its tools all operate on the same **per-session** skill set. Introducing a skill is a pure session registration — no files are copied; the registered resource points back at the original folder. The per-session introduced set is saved to disk and replayed when the session resumes.
+
+```mermaid
+flowchart LR
+    subgraph Entrances["Three entrances"]
+        Tools["Model tools<br/>session_skill_*"]
+        Cmds["Slash commands<br/>/skill-*"]
+        Panel["Skill Panel"]
+    end
+    Entrances --> Session["Current session skill set<br/>isolated per session"]
+    Session -->|"points back, no file copy"| Folders["Your skills<br/>local/ pool + global ~/.dsh/skills"]
+    Session -->|"persisted"| Persist[".session-skills/sessionId.json"]
+```
+
+Plugins and session MCP (the other tab) are managed through the panel directly — see [Plugins & MCP](#plugins-and-mcp).
+
 ## Troubleshooting
 
 | Problem | What to do |
 | --- | --- |
-| Command results don't appear in a fresh empty session | The DSH client intentionally does not treat command nodes as conversation content. Send a message or refresh, or use commands in a session with existing history. |
-| A skill I placed in the local folder doesn't show up | Make sure it is a subdirectory of `~/.dsh/.skill-pool/local/` containing a `SKILL.md`. |
-| Global skills (`~/.dsh/skills`, etc.) don't appear | Those are process-level and not managed or displayed by this plugin; only the `local/` folder and the session introduced set are. |
+| Command results don't appear in a fresh empty session | The DSH client intentionally does not treat command nodes as session content. Send a message or refresh, or run the command in a session with existing history. |
+| A skill I placed in the available pool doesn't show up | Make sure it is a subdirectory of `~/.dsh/.skill-pool/local/` containing a `SKILL.md`. |
+| A skill in the global layer (`~/.dsh/skills`) doesn't show up | Make sure it is a subdirectory of `~/.dsh/skills` containing a `SKILL.md`; the global layer is shown in the Skills tab's global group. |
 | Something is wrong and you can't tell why | Run the plugin debugger to dump state + recent error logs in one shot (see below). |
 
 ### Debugging the plugin
 
-The plugin ships a standalone, read-only diagnostic script that lets an agent (or a human) inspect plugin state and recent error logs in one command — it does not require the host to be running and never modifies files.
+The panel ships a standalone, read-only diagnostic script that inspects plugin state and recent error logs in one command — it does not require the host to be running and never modifies files.
 
-```bash
+```sh
 pnpm debug                       # text dump: pool scan + session introduce-set + config + consistency check
 pnpm debug --json                # same data as structured JSON
 pnpm debug --root <dir>          # override the pool root
+pnpm debug --profile <dir>       # override the DSH profile root
 pnpm debug --logs 20             # include up to 20 recent error/warn log lines
 ```
 
+> **Note:** The `pnpm debug` script is a dev/source tool. It is **not** shipped in the published npm bundle (which contains only `lib/index.js`, `lib/client.js`, and `cordis.patch.yml`) and requires Node ≥ 22.6 — clone the repo and run it from the source tree.
+
 Structured logs are appended to `<dshHome>/.dshp-skill-panel.log` (JSON Lines) via `ctx.logger`, so the debugger's error clues and the live host logs are the same data source.
+
+> **Agent guide**: the observability/debugging workflow (instrumentation rules, debugger protocol,
+> compatibility, and the 5-step diagnosis) is codified for AI agents in
+> [`docs/observability-sop.md`](./docs/observability-sop.md).
 
 ## FAQ
 
@@ -169,7 +192,15 @@ No. Introductions are per-session and isolated; shadow overrides are per-session
 
 **Does this package ship any skills?**
 
-No. It manages your own local folder only — no bundled skills, no subscription, no catalog.
+No. It manages your own folders only — no bundled skills, no subscription, no catalog.
+
+**Why don't my installed skills show up?**
+
+If a skill isn't visible, check that it's a subdirectory containing a `SKILL.md` in one of the managed layers (`local/` or `~/.dsh/skills`), then refresh the panel.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, building, and testing.
 
 ## License
 
