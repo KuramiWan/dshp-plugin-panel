@@ -142,6 +142,20 @@ Before installing a plugin that reaches into DSH internals, review what it patch
 | Command results don't appear in a fresh empty session | The DSH client intentionally does not treat command nodes as conversation content. Send a message or refresh, or use commands in a session with existing history. |
 | A skill I placed in the local folder doesn't show up | Make sure it is a subdirectory of `~/.dsh/.skill-pool/local/` containing a `SKILL.md`. |
 | Global skills (`~/.dsh/skills`, etc.) don't appear | Those are process-level and not managed or displayed by this plugin; only the `local/` folder and the session introduced set are. |
+| Something is wrong and you can't tell why | Run the plugin debugger to dump state + recent error logs in one shot (see below). |
+
+### Debugging the plugin
+
+The plugin ships a standalone, read-only diagnostic script that lets an agent (or a human) inspect plugin state and recent error logs in one command — it does not require the host to be running and never modifies files.
+
+```bash
+pnpm debug                       # text dump: pool scan + session introduce-set + config + consistency check
+pnpm debug --json                # same data as structured JSON
+pnpm debug --root <dir>          # override the pool root
+pnpm debug --logs 20             # include up to 20 recent error/warn log lines
+```
+
+Structured logs are appended to `<dshHome>/.dshp-skill-panel.log` (JSON Lines) via `ctx.logger`, so the debugger's error clues and the live host logs are the same data source.
 
 ## FAQ
 

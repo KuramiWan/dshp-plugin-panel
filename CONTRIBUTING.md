@@ -77,7 +77,18 @@ so the package builds independently of the DSH source tree.
 
 ## Testing / validation
 
-- Run `pnpm typecheck` before opening a PR — CI runs exactly this.
+- Run `pnpm typecheck` **and** `pnpm test` before opening a PR — CI runs both
+  (host + client type-check, plus the test suite).
+- CI (`ci.yml`) runs `check:name`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
+  and a `pack-check` job that verifies the packed archive contents.
+- Release (`release.yml`) has a `verify` preflight (type-check + test + build +
+  pack dry-run) that must pass before `publish` runs.
+- Tests cover: pool/frontmatter parsing, the session introduce-set
+  (`SessionSkillStore`), the shared core actions, plugin-manager
+  write-protection/hot-mount, and the HTTP route protocol
+  (`405/404/400`, dispatch, method routing). Keep pure-logic tests in
+  `test/*.test.ts` (Node built-in `node:test`, no extra deps); each test file
+  uses its own subdir under `test/.tmp/` so parallel runs don't clobber each other.
 - Manual smoke checks: commands main path, idempotency edges, slash-skill
   invocation, model tools, session isolation, and the panel.
 - For browser UI changes, verify in the DSH web GUI Settings → 「技能面板」.
