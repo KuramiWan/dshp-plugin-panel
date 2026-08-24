@@ -551,7 +551,21 @@ export class SessionMcpManager {
     map.set(name, { serverName, dispose })
     this.bumpUse(name, 1)
 
-    // 会话结束自动清理由 agent.ctx 负责；此处仅在 agent 级显式断开时调用 dispose。
+    // H3 修复：会话结束（agent.ctx 展开）时自动清理，保证 usedCount 递减。
+    // 此前会话结束靠 agent.ctx dispose fiber，但 manager 没有钩子递减 usedCount，
+    // 导致任何曾连接的 server 计数永久 +1，removeTemplate 永远拒绝删除。
+    // 幂等：仅当该连接仍在 map 中（未被显式 disconnect）时才清理，避免重复递减。
+    // ctx.effect(execute) 的 execute 在注册时立即跑（建立副作用），返回的 disposer
+    // 在 ctx 展开（会话结束）时执行——清理逻辑放 disposer 里。
+    agent.ctx.effect(() => () => {
+      const conn = this.mapOf(agent).get(name)
+      if (conn === undefined || conn.serverName !== serverName) return
+      conn.dispose()
+      this.mapOf(agent).delete(name)
+      this.ownedServerNames.delete(serverName)
+      this.bumpUse(name, -1)
+    })
+
     return { ok: true, name, serverName, alreadyConnected: false }
   }
 

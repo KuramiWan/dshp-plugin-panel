@@ -156,3 +156,42 @@ test('M4: select 白名单失败且回滚恢复也失败时，reason 应体现�
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('H3 回归: 会话结束（agent.ctx 展开）后 usedCount 递减，removeTemplate 放行', async () => {
+  const root = mkdtempSync(join(testRoot, 'root-'))
+  try {
+    writeFileSync(join(root, '.mcp-whitelist.json'), JSON.stringify({
+      servers: [{ name: 'sessmcp', transport: 'stdio', command: 'npx', args: [] }],
+    }))
+    const mgr = new SessionMcpManager({ registry: new Map(), get: () => undefined }, root) as unknown as Mgr
+
+    // fake agent：ctx.plugin 返回 stub fiber（await 成功），ctx.effect 捕获清理函数。
+    let sessionCleanup: (() => void) | undefined
+    const agent = {
+      session: { id: 'sess-h3' },
+      ctx: {
+        plugin: () => ({ await: async () => {}, dispose: () => {} }),
+        effect: (fn: () => () => void) => { sessionCleanup = fn(); return () => {} },
+      },
+    } as never
+
+    const res = await mgr.connect(agent, 'sessmcp')
+    assert.equal(res.ok, true)
+    const usedCount = (mgr as unknown as { usedCount: Map<string, number> }).usedCount
+    assert.equal(usedCount.get('sessmcp'), 1, '连接后计数应为 1')
+
+    // removeTemplate 此时应拒绝（计数>0）
+    const before = mgr.removeTemplate('sessmcp')
+    assert.equal(before.ok, false, '会话未结束时不应允许删除')
+
+    // 模拟会话结束：触发 ctx.effect 清理函数
+    assert.ok(sessionCleanup, '应注册会话结束清理钩子')
+    sessionCleanup!()
+
+    assert.equal(usedCount.get('sessmcp'), undefined, '会话结束后计数应清零')
+    const after = mgr.removeTemplate('sessmcp')
+    assert.equal(after.ok, true, '会话结束后应能删除')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
