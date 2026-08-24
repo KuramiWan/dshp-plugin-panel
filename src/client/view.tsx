@@ -252,13 +252,13 @@ export function SkillPanelView(props: SkillPanelViewProps) {
     )
   }
 
-  /** 渲染一组（分组折叠 + 条目）。 */
-  const renderGroup = (groups: Array<[string, SkillItem[]]>, actions: (item: SkillItem) => ReactNode): ReactNode => {
+  /** 渲染一组（分组折叠 + 条目）。scope 用于隔离折叠状态：不同作用域的同名分组各自独立开关。 */
+  const renderGroup = (scope: string, groups: Array<[string, SkillItem[]]>, actions: (item: SkillItem) => ReactNode): ReactNode => {
     if (groups.length === 0) return null
     return (
       <div className="dshp-list">
         {groups.map(([group, list]) => {
-          const key = group === '' ? 'ungrouped' : group
+          const key = `${scope}:${group === '' ? 'ungrouped' : group}`
           const isCollapsed = collapsed.has(key)
           return (
             <div className="dshp-group" key={key}>
@@ -317,7 +317,7 @@ export function SkillPanelView(props: SkillPanelViewProps) {
           ) : globalItems.length === 0 ? (
             <div className="dshp-empty">{t('global.empty')}</div>
           ) : (
-            renderGroup(groupedGlobal, item => (
+            renderGroup('global', groupedGlobal, item => (
               <button className="dshp-btn dshp-btn-danger" onClick={() => runDeactivate(item.name)}>{t('action.deactivate')}</button>
             ))
           )}
@@ -328,7 +328,7 @@ export function SkillPanelView(props: SkillPanelViewProps) {
           ) : poolItems.length === 0 ? (
             <div className="dshp-empty">{query.trim().length > 0 ? t('list.empty') : t('pool.empty')}</div>
           ) : (
-            renderGroup(groupedPool, item => (
+            renderGroup('pool', groupedPool, item => (
               <>
                 {item.badge === 'introduced'
                   ? null
@@ -344,7 +344,7 @@ export function SkillPanelView(props: SkillPanelViewProps) {
           ) : introducedItems.length === 0 ? (
             <div className="dshp-empty">{t('introduced.empty')}</div>
           ) : (
-            renderGroup(groupedIntroduced, item => (
+            renderGroup('introduced', groupedIntroduced, item => (
               <button className="dshp-btn dshp-btn-danger" onClick={() => runRemove(item.name)}>{t('action.remove')}</button>
             ))
           )}

@@ -51,6 +51,8 @@ import type {
   SkillPanelPluginToggleResult,
   SkillPanelPluginInstallRequest,
   SkillPanelPluginInstallResult,
+  SkillPanelPluginPromoteRequest,
+  SkillPanelPluginPromoteResult,
 } from '../types.ts'
 
 /**
@@ -79,6 +81,7 @@ export interface SkillPanelClient {
   pluginList(request: SkillPanelPluginListRequest): Promise<SkillPanelPluginListResult>
   pluginToggle(request: SkillPanelPluginToggleRequest): Promise<SkillPanelPluginToggleResult>
   pluginInstall(request: SkillPanelPluginInstallRequest): Promise<SkillPanelPluginInstallResult>
+  pluginPromote(request: SkillPanelPluginPromoteRequest): Promise<SkillPanelPluginPromoteResult>
 }
 
 /** POST 一个面板方法；HTTP 非 2xx 时抛出（优先取 body 的 reason）。 */
@@ -212,6 +215,13 @@ export function createSkillPanelClient(): SkillPanelClient {
         return (await post('pluginInstall', request)) as SkillPanelPluginInstallResult
       } catch (error) {
         return foldFail<SkillPanelPluginInstallResult>(error)
+      }
+    },
+    pluginPromote: async (request) => {
+      try {
+        return (await post('pluginPromote', request)) as SkillPanelPluginPromoteResult
+      } catch (error) {
+        return foldFail<SkillPanelPluginPromoteResult>(error)
       }
     },
   }

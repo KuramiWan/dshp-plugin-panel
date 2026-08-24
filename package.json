@@ -1,6 +1,6 @@
 {
   "name": "@super_camel/dsh-skill-panel",
-  "description": "DSHP session-scoped skill control: session_skill_* model tools + /skill-* slash commands + browser Skill Panel over a webServer HTTP route (ADR-0007, three entrances)",
+  "description": "DSHP session-scoped skill control and plugin management: session_skill_* tools, /skill-* commands, and a browser panel for skills, session MCP, and host-composition plugins (enable/disable, bundle→patch promote)",
   "version": "0.1.2",
   "license": "MIT",
   "author": "super_camel",

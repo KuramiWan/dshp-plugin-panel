@@ -62,6 +62,8 @@ export type {
   SkillPanelPluginToggleResult,
   SkillPanelPluginInstallRequest,
   SkillPanelPluginInstallResult,
+  SkillPanelPluginPromoteRequest,
+  SkillPanelPluginPromoteResult,
 } from './types.ts'
 
 export interface SkillControlConfig {

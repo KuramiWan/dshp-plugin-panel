@@ -4,11 +4,11 @@
 [![MIT](https://img.shields.io/badge/license-MIT-0B7285?style=flat-square)](LICENSE)
 [![DSH](https://img.shields.io/badge/DSH-Web-5B4CF0?style=flat-square)](cordis.patch.yml)
 
-**Session-level skill management for DeepSeek Harness — introduce and remove skills per session, with a convenient browser panel, model tools, and slash commands that all control the same skills.**
+**Session-level skill and plugin management for DeepSeek Harness — a browser panel, model tools, and slash commands that control your skills, session MCP, and host-composition plugins.**
 
-🚀 Session-level management | Convenient panel | Panel, commands, and tools stay in sync | Install with one command
+🚀 Session-level management | Convenient panel | Panel, commands, and tools stay in sync | Plugin management | Install with one command
 
-[Highlights](#highlights) | [Who it is for](#who-it-is-for) | [Quick start](#quick-start) | [Toolbox](#toolbox) | [How it works](#how-it-works) | [Troubleshooting](#troubleshooting) | [FAQ](#faq)
+[Highlights](#highlights) | [Who it is for](#who-it-is-for) | [Quick start](#quick-start) | [Toolbox](#toolbox) | [How it works](#how-it-works) | [Plugin management](#plugin-management) | [Troubleshooting](#troubleshooting) | [FAQ](#faq)
 
 🌐 **English** | [中文](README.zh.md)
 
@@ -17,6 +17,7 @@
 - **Session-level skill management.** Introduce and remove skills per session — each session keeps its own isolated set, shadow overrides stay local, and nothing leaks between sessions. The introduced set survives host restarts.
 - **A convenient management panel.** A browser settings section gives you a visual overview of your local skills and the current session's skills — search, expand details, and introduce or remove with a click.
 - **Everything stays in sync.** The panel, the `session_skill_*` model tools, and the `/skill-*` slash commands all control the same skills — introduce or remove a skill in one place and it shows up everywhere.
+- **Plugin management.** Manage the plugins DSH has loaded — enable/disable user-installed plugins, promote bundle plugins to hot-pluggable, and manage session MCP connections, all from the same panel.
 - **Skills come from your own folder.** Skills live in your local folder (`~/.dsh/.skill-pool/local/`). Add a folder to manage a skill, delete it to remove it. This package ships no skills and does no subscription or catalog.
 
 ## Who it is for
@@ -24,6 +25,7 @@
 1. You want the model to discover and load skills on its own — the `session_skill_*` tools let it browse, search, introduce, and remove skills autonomously.
 2. You want to control skills directly from the chat — the `/skill-*` commands are for humans, no model in the loop.
 3. You want a visual overview — the Skill Panel shows your local skills and the current session's introduced skills in one settings section.
+4. You want to manage DSH's plugins — the panel's Plugins tab lets you enable/disable user-installed plugins, promote bundle plugins to hot-pluggable, and manage session MCP connections.
 
 ## Quick start
 
@@ -83,7 +85,7 @@ Called by you, directly:
 
 ### Skill Panel
 
-A browser settings section with two views — your local skills and the current session's introduced skills — with search, detail expansion, and shadow-override badges.
+A browser settings section with two views — your local skills and the current session's introduced skills — with search, detail expansion, and shadow-override badges. It also has a **Plugins** tab for managing the plugins DSH has loaded (see [Plugin management](#plugin-management)).
 
 ## How it works
 
@@ -99,6 +101,27 @@ flowchart LR
 ```
 
 Introducing a skill is a pure session registration — no files are copied; the registered resource points back at the original folder. Global skill layers (`~/.dsh/skills`, `~/.agents/skills`, project `.dsh/skills`) are process-level and visible to every session, so this plugin does not manage or display them.
+
+## Plugin management
+
+The panel's **Plugins** tab lists the plugins DSH has loaded, grouped by how they are mounted:
+
+- **Built-in** — shipped with DSH, read-only.
+- **User-installed (patch)** — mounted from `cordis.patch.yml`; enable/disable takes effect immediately, no restart.
+- **User-installed (bundle)** — mounted from `dsh.profile.bundles`; enable/disable requires a restart.
+- **MCP** — session-level connections, managed separately.
+
+### Making a bundle plugin hot-pluggable
+
+A plugin installed with `dsh plugin add` that declares `dsh.bundle.patch` is mounted as a **bundle**: DSH reads `dsh.profile.bundles` once at startup, so enabling or disabling it only takes effect after a restart.
+
+The **Make hot-pluggable** button converts a bundle plugin to a patch plugin, so you can enable and disable it without restarting:
+
+1. Click **Make hot-pluggable** on the plugin. The panel removes it from `dsh.profile.bundles` and rewrites the installed package to drop its `dsh.bundle` declaration (an in-place fork), so DSH stops treating it as a bundle.
+2. Restart DSH.
+3. Click **Enable**. The plugin is now mounted from `cordis.patch.yml`, and enable/disable takes effect immediately.
+
+> **Note:** The rewrite happens inside `node_modules`, so `pnpm update` or `dsh plugin update` overwrites it and restores the `dsh.bundle` declaration — promote again after updating. The original `package.json` is backed up as `package.json.bak` if you need to revert.
 
 ## Troubleshooting
 

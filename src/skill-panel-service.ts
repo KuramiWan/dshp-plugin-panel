@@ -73,6 +73,8 @@ import type {
   SkillPanelPluginToggleResult,
   SkillPanelPluginInstallRequest,
   SkillPanelPluginInstallResult,
+  SkillPanelPluginPromoteRequest,
+  SkillPanelPluginPromoteResult,
 } from './types.ts'
 
 export interface SkillPanelServiceOptions {
@@ -197,10 +199,13 @@ export class SkillPanelService {
           result = this.pluginList(payload as unknown as SkillPanelPluginListRequest)
           break
         case 'pluginToggle':
-          result = this.pluginToggle(payload as unknown as SkillPanelPluginToggleRequest)
+          result = await this.pluginToggle(payload as unknown as SkillPanelPluginToggleRequest)
           break
         case 'pluginInstall':
           result = this.pluginInstall(payload as unknown as SkillPanelPluginInstallRequest)
+          break
+        case 'pluginPromote':
+          result = this.pluginPromote(payload as unknown as SkillPanelPluginPromoteRequest)
           break
         default:
           this.send(res, 404, { ok: false, reason: `unknown method "${method}"` })
@@ -419,17 +424,18 @@ export class SkillPanelService {
       protected: p.protected,
       manageable: p.manageable,
       isSelf: p.isSelf,
+      ...(p.pendingRestart === undefined ? {} : { pendingRestart: p.pendingRestart }),
       ...(p.packageName === undefined ? {} : { packageName: p.packageName }),
       ...(p.mcp === undefined ? {} : { mcp: p.mcp }),
     })) }
   }
 
-  /** 启停一个用户插件行（写活动 profile cordis.patch.yml，热重载免重启）。 */
-  pluginToggle(request: SkillPanelPluginToggleRequest): SkillPanelPluginToggleResult {
-    this.agentOf(request.sessionId)
+  /** 启停一个插件行（patch/bundle 写组合层；mcp 行连接/断开会话）。 */
+  async pluginToggle(request: SkillPanelPluginToggleRequest): Promise<SkillPanelPluginToggleResult> {
+    const agent = this.agentOf(request.sessionId)
     const result = request.enabled
-      ? this.plugins.enable(request.id)
-      : this.plugins.disable(request.id)
+      ? await this.plugins.enable(request.id, agent)
+      : await this.plugins.disable(request.id, agent)
     if (!result.ok) return { ok: false, reason: result.reason }
     return { ok: true, id: result.id, enabled: result.enabled }
   }
@@ -440,5 +446,13 @@ export class SkillPanelService {
     const result = this.plugins.install(request.id, request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
     return { ok: true, id: result.id }
+  }
+
+  /** 把 bundle 行提升为 patch 行（热插拔；冷迁移，需重启一次）。 */
+  pluginPromote(request: SkillPanelPluginPromoteRequest): SkillPanelPluginPromoteResult {
+    this.agentOf(request.sessionId)
+    const result = this.plugins.promoteToPatch(request.id)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true, id: result.id, restartRequired: result.restartRequired }
   }
 }

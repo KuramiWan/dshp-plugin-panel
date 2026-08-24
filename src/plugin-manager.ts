@@ -57,6 +57,8 @@ export interface PluginFiberView {
   manageable: boolean
   /** 是否面板自身行。 */
   isSelf: boolean
+  /** 已提升为热插拔、但尚未重启（bundle 层仍冻结在运行树里，重启后生效）。 */
+  pendingRestart?: boolean
   /** 行包名（patch 行有；mcp 行为 mcp-client 包；core 行可能缺）。 */
   packageName?: string
   /** mcp 桥接信息（source==='mcp' 时）。 */
@@ -69,6 +71,8 @@ export interface UserPluginSpec {
   name: string
   /** 挂载来源（patch=热挂载 cordis.patch.yml；bundle=冷挂载 dsh.profile.bundles）。 */
   source?: 'patch' | 'bundle'
+  /** 提升待完成：bundle 已从 dsh.profile.bundles 移除，待重启后启用（写 patch 行）。 */
+  pendingPromote?: boolean
 }
 
 /** patch 行（cordis.patch.yml `- insert:` 下的条目）。 */
@@ -90,6 +94,10 @@ export type PluginToggleResult =
 
 export type PluginInstallResult =
   | { ok: true; id: string }
+  | { ok: false; reason: string }
+
+export type PluginPromoteResult =
+  | { ok: true; id: string; restartRequired: true }
   | { ok: false; reason: string }
 
 /** 活动 profile 解析失败时退回的默认 profile 名（ADR：当前只管 web profile）。 */
@@ -201,26 +209,33 @@ export class PluginManager {
       // 面板自身 fiber 的 runtime 名是类名（SkillControlPlugin），展示用行 id（dshp-skill-panel）。
       const isSelfFiber = rawId === this.selfFiberName()
       const id = isSelfFiber ? (this.selfRowId() ?? rawId) : rawId
-      seenIds.add(id)
+      // 全局 MCP 行（home patch 的 mcp-client 桥接）不再作为插件行展示；
+      // 改由「新增 MCP」发现，选中后进白名单、以会话 MCP 行出现在列表。
+      if (this.isMcpClientConfig(fiber.config)) continue
       const state = typeof fiber.state === 'number' ? fiber.state : 0
+      // 去重：同一插件类在多个 context（host/agent/session）挂载，只保留一个（优先 active）。
+      const existing = views.find(v => v.id === id)
+      if (existing !== undefined) {
+        if (existing.state !== 2 && state === 2) {
+          existing.state = 2
+          existing.stateLabel = 'active'
+          existing.active = true
+        }
+        continue
+      }
+      seenIds.add(id)
       const stateLabel = FIBER_LABELS[state] ?? `state:${state}`
-      const isMcp = this.isMcpClientConfig(fiber.config)
       const isSelf = this.isSelf(id) || isSelfFiber
       const packageName = patchRows.find(r => String(r.id) === id)?.name
         ?? specs.find(s => s.id === id)?.name
       const isUserBundle = typeof packageName === 'string' && userBundleNames.has(packageName)
-      const source: PluginSource = isSelf ? 'patch' : (isMcp ? 'mcp' : (patchIds.has(id) ? 'patch' : (isUserBundle ? 'bundle' : 'core')))
-      // patch/bundle 行可管理（非面板自身）；core/mcp 组合行不可在此启停（core 只读；mcp 走会话连接）。
+      // 提升待完成（bundle 已移除、patch 行待重启后写入）：fiber 仍在 registry 说明冻结 bundle 还在跑。
+      const pendingPromote = specs.find(s => s.id === id)?.pendingPromote === true
+      const source: PluginSource = isSelf ? 'patch' : (patchIds.has(id) ? 'patch' : (isUserBundle ? 'bundle' : (pendingPromote ? 'patch' : 'core')))
+      // patch/bundle 行可管理（非面板自身）；core 只读。
       const manageable = (source === 'patch' || source === 'bundle') && !isSelf
       const protected_ = !manageable || isSelf
-
-      let serverName: string | undefined
-      let transport: 'stdio' | 'streamable-http' | undefined
-      if (isMcp) {
-        const cfg = fiber.config as { serverName: string; transport: 'stdio' | 'streamable-http' }
-        serverName = cfg.serverName
-        transport = cfg.transport
-      }
+      const pendingRestart = pendingPromote && !isSelf
 
       views.push({
         id,
@@ -231,10 +246,27 @@ export class PluginManager {
         protected: protected_,
         manageable,
         isSelf,
+        ...(pendingRestart ? { pendingRestart: true } : {}),
         ...(typeof packageName === 'string' ? { packageName } : {}),
-        ...(isMcp && serverName !== undefined && transport !== undefined
-          ? { mcp: { serverName, transport, connected: connected.has(serverName) } }
-          : {}),
+      })
+    }
+
+    // 白名单（会话 MCP）作为插件行展示：启用=连接、停用=断开（会话级）。
+    for (const template of this.mcp.whitelist()) {
+      const id = template.name
+      if (seenIds.has(id)) continue
+      seenIds.add(id)
+      const isConnected = connected.has(id)
+      views.push({
+        id,
+        source: 'mcp',
+        state: isConnected ? 2 : -1,
+        stateLabel: isConnected ? 'active' : 'stopped',
+        active: isConnected,
+        protected: false,
+        manageable: true,
+        isSelf: false,
+        mcp: { serverName: template.name, transport: template.transport, connected: isConnected },
       })
     }
 
@@ -381,13 +413,19 @@ export class PluginManager {
 
   // ---- 用户插件启停 ----
 
-  /** 停用：patch 行从 cordis.patch.yml 移除（热重载）；bundle 行从 dsh.profile.bundles 移除（冷挂载，需重启）。 */
-  disable(id: string): PluginToggleResult {
-    const views = this.list()
+  /** 停用：patch 行从 cordis.patch.yml 移除（热重载）；bundle 行从 dsh.profile.bundles 移除（冷挂载，需重启）；mcp 行断开会话连接。 */
+  async disable(id: string, agent?: Agent): Promise<PluginToggleResult> {
+    const views = this.list(agent)
     const view = views.find(v => v.id === id)
     if (view === undefined) return { ok: false, reason: `未找到插件行 "${id}"` }
     if (view.isSelf) return { ok: false, reason: '禁止停用面板自身' }
     if (!view.active) return { ok: false, reason: `"${id}" 已处于停用状态` }
+    if (view.source === 'mcp') {
+      if (agent === undefined) return { ok: false, reason: '缺少会话上下文，无法断开 MCP' }
+      const result = this.mcp.disconnect(agent, id)
+      if (!result.ok) return { ok: false, reason: result.reason }
+      return { ok: true, id, enabled: false }
+    }
     if (view.source === 'bundle') {
       const name = view.packageName
       if (typeof name !== 'string' || name === '') return { ok: false, reason: `缺少 "${id}" 的包名，无法移除 bundle` }
@@ -405,12 +443,18 @@ export class PluginManager {
     return { ok: true, id, enabled: false }
   }
 
-  /** 启用：patch 行加回 cordis.patch.yml（热重载）；bundle 行加回 dsh.profile.bundles（冷挂载，需重启）。 */
-  enable(id: string): PluginToggleResult {
-    const views = this.list()
+  /** 启用：patch 行加回 cordis.patch.yml（热重载）；bundle 行加回 dsh.profile.bundles（冷挂载，需重启）；mcp 行连接会话。 */
+  async enable(id: string, agent?: Agent): Promise<PluginToggleResult> {
+    const views = this.list(agent)
     const view = views.find(v => v.id === id)
     if (view === undefined) return { ok: false, reason: `未找到插件行 "${id}"` }
     if (view.active) return { ok: false, reason: `"${id}" 已处于运行状态` }
+    if (view.source === 'mcp') {
+      if (agent === undefined) return { ok: false, reason: '缺少会话上下文，无法连接 MCP' }
+      const result = await this.mcp.connect(agent, id)
+      if (!result.ok) return { ok: false, reason: result.reason }
+      return { ok: true, id, enabled: true }
+    }
     const name = view.packageName
     if (typeof name !== 'string' || name === '') {
       return { ok: false, reason: `缺少 "${id}" 的包名，无法重建（请在状态文件/手动补 name）` }
@@ -422,6 +466,13 @@ export class PluginManager {
       const result = this.writeBundleNames(bundles)
       if (!result.ok) return { ok: false, reason: result.reason }
       return { ok: true, id, enabled: true }
+    }
+    // 防重复挂载：若该包被 `dsh plugin` 的 reconcile 重新加回了 bundles，先移除，
+    // 否则下次启动会因 bundle + patch 同 id 而 duplicate entry id 崩溃。
+    const bundles = this.readBundleNames()
+    if (bundles.includes(name)) {
+      const rmResult = this.writeBundleNames(bundles.filter(n => n !== name))
+      if (!rmResult.ok) return { ok: false, reason: rmResult.reason }
     }
     const rows = this.readPatchRows()
     if (rows.some(r => String(r.id) === id)) return { ok: false, reason: `"${id}" 已在 patch 中` }
@@ -446,6 +497,64 @@ export class PluginManager {
     const result = this.writePatch(rows)
     if (!result.ok) return { ok: false, reason: result.reason }
     return { ok: true, id: id.trim() }
+  }
+
+  // ---- bundle → patch 提升（冷迁移，需重启一次） ----
+
+  /**
+   * 把 bundle 行提升为 patch 行（热插拔）：从 dsh.profile.bundles 移除（冷），记录为
+   * patch 规格（pendingPromote）。重启后该行显示为「已停用」的 patch 插件，用户点「启用」
+   * 即写回 cordis.patch.yml（此时冻结 bundle 已消失，写 patch 行不会重复挂载），此后免重启启停。
+   */
+  promoteToPatch(id: string): PluginPromoteResult {
+    const views = this.list()
+    const view = views.find(v => v.id === id)
+    if (view === undefined) return { ok: false, reason: `未找到插件行 "${id}"` }
+    if (view.isSelf) return { ok: false, reason: '禁止对面板自身执行提升' }
+    if (view.source !== 'bundle') return { ok: false, reason: `"${id}" 不是 bundle 行，无需提升` }
+    const name = view.packageName
+    if (typeof name !== 'string' || name === '') return { ok: false, reason: `缺少 "${id}" 的包名，无法提升` }
+    // 从 bundles 移除（冷挂载，重启后生效）。
+    const bundles = this.readBundleNames().filter(n => n !== name)
+    const rmResult = this.writeBundleNames(bundles)
+    if (!rmResult.ok) return { ok: false, reason: rmResult.reason }
+    // 重写目标包：去掉 dsh.bundle 声明，使 DSH 不再把它当 bundle（reconcile 不再加回 bundles）。
+    const rewrite = this.rewriteBundleToPatch(name)
+    if (!rewrite.ok) return { ok: false, reason: rewrite.reason }
+    // 记录为 patch 规格（待重启后启用）。
+    const specs = this.readSpecs()
+    const spec = specs.find(s => s.id === id)
+    if (spec === undefined) {
+      specs.push({ id, name, source: 'patch', pendingPromote: true })
+    } else {
+      spec.source = 'patch'
+      spec.pendingPromote = true
+    }
+    this.persistSpecs(specs)
+    return { ok: true, id, restartRequired: true }
+  }
+
+  /**
+   * 重写目标 bundle 包的 package.json：去掉 `dsh.bundle` 声明（备份到 .bak），使 DSH 的
+   * `dsh plugin` reconcile 不再把它当 bundle 加回 dsh.profile.bundles。这是「就地 fork」——
+   * 修改 node_modules 里的包，`pnpm update`/`dsh plugin update` 会覆盖它（需重新提升）。
+   */
+  private rewriteBundleToPatch(packageName: string): { ok: true } | { ok: false; reason: string } {
+    const pkgFile = join(this.profileDir, 'node_modules', packageName, 'package.json')
+    if (!existsSync(pkgFile)) return { ok: false, reason: `找不到 "${packageName}" 的 package.json` }
+    try {
+      const pkg = JSON.parse(readFileSync(pkgFile, 'utf8')) as { dsh?: { bundle?: unknown; [k: string]: unknown } }
+      if (pkg.dsh?.bundle === undefined) return { ok: true } // 已无 bundle 声明，no-op
+      writeFileSync(pkgFile + '.bak', readFileSync(pkgFile, 'utf8'), 'utf8')
+      delete pkg.dsh.bundle
+      if (Object.keys(pkg.dsh).length === 0) delete pkg.dsh
+      const tmp = pkgFile + '.tmp'
+      writeFileSync(tmp, JSON.stringify(pkg, null, 2) + '\n', 'utf8')
+      renameSync(tmp, pkgFile)
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, reason: `rewrite ${packageName} failed: ${error instanceof Error ? error.message : String(error)}` }
+    }
   }
 
   // ---- 状态文件（跨会话记住用户插件行规格） ----
