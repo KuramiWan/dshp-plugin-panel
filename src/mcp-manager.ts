@@ -305,7 +305,7 @@ export class SessionMcpManager {
     // deselect 对称：恢复全局连接。
     const restored = this.restoreGlobalMcp(name)
     if (!restored.ok) {
-      console.error(`[dshp-skill-panel] restore global MCP "${name}" failed: ${restored.reason}`)
+      this.context.logger('mcp').error(`restore global MCP "${name}" failed: ${restored.reason}`)
     }
     return { ok: true }
   }

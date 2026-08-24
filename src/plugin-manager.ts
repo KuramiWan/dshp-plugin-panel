@@ -133,6 +133,11 @@ export class PluginManager {
     this.mcp = mcp
   }
 
+  /** 活动 profile 目录（供日志/调试）。 */
+  get profileDirPath(): string {
+    return this.profileDir
+  }
+
   // ---- 组合盘点 ----
 
   /** 面板自身 fiber 的 runtime 名（fiber.name 是插件类名，如 SkillControlPlugin）。 */

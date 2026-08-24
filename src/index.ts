@@ -20,6 +20,7 @@ import { PluginManager } from './plugin-manager.ts'
 import { resolvePoolRoot } from './pool.ts'
 import { SessionSkillStore } from './handles.ts'
 import { replaySession } from './actions.ts'
+import { installPanelLogging } from './logger.ts'
 
 export type {
   SkillPanelBrowseEntry,
@@ -88,18 +89,21 @@ export class SkillControlPlugin {
   private plugins!: PluginManager
 
   constructor(ctx: Context, config: SkillControlConfig = {}) {
+    // 日志系统：在插件 init 前注册 exporter（控制台 + JSON Lines 文件 + 缓冲），
+    // 使后续所有命名 logger（skill-panel/pool/store/mcp/plugin-manager）统一走结构化管道。
+    installPanelLogging(ctx)
     try {
       this.init(ctx, config)
     } catch (error) {
       // 初始化失败不抛错：让 fiber 保持 active，避免一个插件 bug 阻塞整个 DSH 启动。
       // 失败时插件静默降级（不注册工具/命令/面板），DSH 其余部分照常运行。
-      console.error('[dshp-skill-panel] initialization failed; plugin disabled:', error)
+      ctx.logger('skill-panel').error('[dshp-skill-panel] initialization failed; plugin disabled:', error)
     }
   }
 
   private init(ctx: Context, config: SkillControlConfig): void {
     const poolRoot = resolvePoolRoot(config.poolRoot)
-    this.store = new SessionSkillStore(poolRoot)
+    this.store = new SessionSkillStore(poolRoot, ctx.logger('store'))
     this.mcp = new SessionMcpManager(ctx, poolRoot)
     this.plugins = new PluginManager(ctx, this.mcp, config.profileDir)
     applySessionSkillTools(ctx, { poolRoot, store: this.store })
@@ -112,6 +116,7 @@ export class SkillControlPlugin {
       void replaySession(ctx, poolRoot, this.store, payload.agent)
     }), 'skill-panel: session introduce-set replay')
     ctx.plugin(SkillPanelService, { poolRoot, store: this.store, mcp: this.mcp, plugins: this.plugins })
+    ctx.logger('skill-panel').info(`initialized: poolRoot=${poolRoot} profileDir=${this.plugins.profileDirPath}`)
   }
 }
 

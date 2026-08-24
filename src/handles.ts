@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { readTextFileSync } from './fs.ts'
+import { consoleLogger, type PanelLogger } from './logger.ts'
 
 const SESSION_SKILLS_DIR = '.session-skills'
 
@@ -18,9 +19,12 @@ export class SessionSkillStore {
   private readonly introduced = new WeakMap<Agent, Map<string, () => void>>()
   /** 会话引入集落盘目录（poolRoot/.session-skills）；undefined = 不持久化（测试等）。 */
   private readonly persistDir: string | undefined
+  /** 日志面（默认 console；插件实例可注入 ctx.logger('store')）。 */
+  readonly logger: PanelLogger
 
-  constructor(poolRoot?: string) {
+  constructor(poolRoot?: string, logger: PanelLogger = consoleLogger) {
     this.persistDir = poolRoot === undefined ? undefined : join(poolRoot, SESSION_SKILLS_DIR)
+    this.logger = logger
   }
 
   /** 当前会话已引入的 skill 名清单。 */
@@ -69,7 +73,7 @@ export class SessionSkillStore {
       writeFileSync(join(dir, `${id}.json`), JSON.stringify(payload, null, 2), 'utf8')
     } catch (error) {
       // 落盘失败不使引入失败：会话内注册已成功，只是重启后不再恢复。
-      console.warn(`[skill-panel] persist session introduce-set for "${id}" failed: ${error instanceof Error ? error.message : String(error)}`)
+      this.logger.warn(`persist session introduce-set for "${id}" failed: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 

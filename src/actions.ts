@@ -114,6 +114,7 @@ export async function introduceSkill(
     resourceBase: { kind: 'directory', path: def.directory },
   })
   store.track(agent, name, dispose)
+  ctx.logger('skill-panel').info(`introduced "${name}" session=${agent.session?.id ?? agent.id} shadowed=${shadowed}`)
   return { ok: true, name, shadowed, alreadyIntroduced: false, persisted: true }
 }
 
@@ -123,6 +124,7 @@ export function removeSkill(store: SessionSkillStore, agent: Agent, name: string
   if (dispose === undefined) return { ok: false, reason: `"${name}" 未在本会话引入` }
   dispose()
   store.drop(agent, name)
+  store.logger?.info(`removed "${name}" session=${agent.session?.id ?? agent.id}`)
   return { ok: true, name }
 }
 
@@ -138,7 +140,7 @@ export async function replaySession(ctx: Context, poolRoot: string, store: Sessi
     try {
       await introduceSkill(ctx, poolRoot, store, agent, name)
     } catch (error) {
-      console.warn(`[skill-panel] replay "${name}" for session "${id}" failed: ${error instanceof Error ? error.message : String(error)}`)
+      ctx.logger('skill-panel').warn(`replay "${name}" for session "${id}" failed: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 }
