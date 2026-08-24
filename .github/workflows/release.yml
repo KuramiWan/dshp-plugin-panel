@@ -10,8 +10,36 @@ permissions:
   id-token: write
 
 jobs:
+  verify:
+    name: Preflight (type-check + test + build + pack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 发布前独立跑全量校验（两端 type-check + test + build），
+      # 与 prepublishOnly 双保险——任何破坏在打 tag 发布前被拦下。
+      - name: Type-check host + client
+        run: pnpm typecheck
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build + pack dry-run
+        run: pnpm build && pnpm pack --dry-run
+
   publish:
     name: Publish to npm + GitHub Release
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +55,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # prepublishOnly runs `pnpm typecheck:host && pnpm build` before packing.
+      # prepublishOnly runs `pnpm check:name && pnpm test && pnpm typecheck && pnpm build` before packing.
       - name: Publish to npm
         run: pnpm publish --provenance --no-git-checks
         env:

@@ -7,7 +7,7 @@ on:
 
 jobs:
   check:
-    name: Type-check + build
+    name: Type-check + test + build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,5 +25,38 @@ jobs:
       - name: Check package name consistency
         run: pnpm check:name
 
-      - name: Type-check host + build
-        run: pnpm typecheck:host && pnpm build
+      # 两端（host + client）都 type-check：此前 CI 只查 host，客户端类型漂移会漏过。
+      - name: Type-check host + client
+        run: pnpm typecheck
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build (host + client)
+        run: pnpm build
+
+  # 发布预演：校验打包产物完整（files 里声明的文件都真实存在、可安装）。
+  # 与 release.yml 的 prepublishOnly 互补：本 job 在每次 PR/push 就提前拦下打包错误。
+  pack-check:
+    name: Package dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build before pack
+        run: pnpm build
+
+      - name: Pack and verify archive contents
+        run: |
+          pnpm pack
+          tar -tzf *.tgz

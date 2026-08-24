@@ -29,11 +29,12 @@
     "build:client": "node build-client.mjs",
     "build": "pnpm run build:host && pnpm run build:client",
     "check:name": "node scripts/check-name.mjs",
+    "debug": "node --experimental-strip-types scripts/debug-dump.ts",
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "typecheck:host": "tsc -p tsconfig.host.json --noEmit",
     "typecheck:client": "tsc -p tsconfig.client.json",
     "typecheck": "pnpm run typecheck:host && pnpm run typecheck:client",
-    "prepublishOnly": "pnpm run check:name && pnpm run test && pnpm run typecheck:host && pnpm run build"
+    "prepublishOnly": "pnpm run check:name && pnpm run test && pnpm run typecheck && pnpm run build"
   },
   "dsh": {
     "bundle": {
