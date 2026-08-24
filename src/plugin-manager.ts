@@ -67,6 +67,8 @@ export interface PluginFiberView {
 export interface UserPluginSpec {
   id: string
   name: string
+  /** 挂载来源（patch=热挂载 cordis.patch.yml；bundle=冷挂载 dsh.profile.bundles）。 */
+  source?: 'patch' | 'bundle'
 }
 
 /** patch 行（cordis.patch.yml `- insert:` 下的条目）。 */
@@ -208,8 +210,8 @@ export class PluginManager {
         ?? specs.find(s => s.id === id)?.name
       const isUserBundle = typeof packageName === 'string' && userBundleNames.has(packageName)
       const source: PluginSource = isSelf ? 'patch' : (isMcp ? 'mcp' : (patchIds.has(id) ? 'patch' : (isUserBundle ? 'bundle' : 'core')))
-      // patch 行可管理（非面板自身）；core/mcp/bundle 组合行不可在此启停（core 只读；mcp 走会话连接；bundle 走冷挂载）。
-      const manageable = source === 'patch' && !isSelf
+      // patch/bundle 行可管理（非面板自身）；core/mcp 组合行不可在此启停（core 只读；mcp 走会话连接）。
+      const manageable = (source === 'patch' || source === 'bundle') && !isSelf
       const protected_ = !manageable || isSelf
 
       let serverName: string | undefined
@@ -240,14 +242,15 @@ export class PluginManager {
     for (const spec of specs) {
       if (seenIds.has(spec.id)) continue
       if (this.isSelf(spec.id)) continue // 面板自身行 id 不当作「已停用」
+      const specSource = spec.source ?? 'patch'
       views.push({
         id: spec.id,
-        source: 'patch',
+        source: specSource,
         state: -1,
         stateLabel: 'stopped',
         active: false,
         protected: false,
-        manageable: true,
+        manageable: specSource === 'patch' || specSource === 'bundle',
         isSelf: this.isSelf(spec.id),
         packageName: spec.name,
       })
@@ -301,6 +304,25 @@ export class PluginManager {
       return Array.isArray(bundles) ? bundles.filter((b): b is string => typeof b === 'string') : []
     } catch {
       return []
+    }
+  }
+
+  /** 写回 dsh.profile.bundles（package.json）：备份 + 原子写。 */
+  private writeBundleNames(bundleNames: string[]): { ok: true } | { ok: false; reason: string } {
+    const pkgFile = join(this.profileDir, 'package.json')
+    if (!existsSync(pkgFile)) return { ok: false, reason: 'profile package.json not found' }
+    try {
+      const pkg = JSON.parse(readFileSync(pkgFile, 'utf8')) as { dsh?: { profile?: { bundles?: unknown } } }
+      if (pkg.dsh === undefined) pkg.dsh = {}
+      if (pkg.dsh.profile === undefined) pkg.dsh.profile = {}
+      pkg.dsh.profile.bundles = bundleNames
+      writeFileSync(pkgFile + '.bak', readFileSync(pkgFile, 'utf8'), 'utf8')
+      const tmp = pkgFile + '.tmp'
+      writeFileSync(tmp, JSON.stringify(pkg, null, 2) + '\n', 'utf8')
+      renameSync(tmp, pkgFile)
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, reason: `write package.json failed: ${error instanceof Error ? error.message : String(error)}` }
     }
   }
 
@@ -359,14 +381,23 @@ export class PluginManager {
 
   // ---- 用户插件启停 ----
 
-  /** 停用：从 patch 移除 insert 行 → 热重载卸载该插件。 */
+  /** 停用：patch 行从 cordis.patch.yml 移除（热重载）；bundle 行从 dsh.profile.bundles 移除（冷挂载，需重启）。 */
   disable(id: string): PluginToggleResult {
     const views = this.list()
     const view = views.find(v => v.id === id)
     if (view === undefined) return { ok: false, reason: `未找到插件行 "${id}"` }
     if (view.isSelf) return { ok: false, reason: '禁止停用面板自身' }
-    if (view.source !== 'patch') return { ok: false, reason: `"${id}" 不是活动 profile 的 patch 行，不可在此停用（bundle 走冷挂载，需改 package.json 后重启）` }
     if (!view.active) return { ok: false, reason: `"${id}" 已处于停用状态` }
+    if (view.source === 'bundle') {
+      const name = view.packageName
+      if (typeof name !== 'string' || name === '') return { ok: false, reason: `缺少 "${id}" 的包名，无法移除 bundle` }
+      const bundles = this.readBundleNames().filter(n => n !== name)
+      const result = this.writeBundleNames(bundles)
+      if (!result.ok) return { ok: false, reason: result.reason }
+      this.setSpecSource(id, 'bundle')
+      return { ok: true, id, enabled: false }
+    }
+    if (view.source !== 'patch') return { ok: false, reason: `"${id}" 不是活动 profile 的 patch 行，不可在此停用` }
 
     const rows = this.readPatchRows().filter(r => String(r.id) !== id)
     const result = this.writePatch(rows)
@@ -374,7 +405,7 @@ export class PluginManager {
     return { ok: true, id, enabled: false }
   }
 
-  /** 启用：把记录/已知规格的 insert 行加回 patch → 热重载挂载。 */
+  /** 启用：patch 行加回 cordis.patch.yml（热重载）；bundle 行加回 dsh.profile.bundles（冷挂载，需重启）。 */
   enable(id: string): PluginToggleResult {
     const views = this.list()
     const view = views.find(v => v.id === id)
@@ -382,7 +413,15 @@ export class PluginManager {
     if (view.active) return { ok: false, reason: `"${id}" 已处于运行状态` }
     const name = view.packageName
     if (typeof name !== 'string' || name === '') {
-      return { ok: false, reason: `缺少 "${id}" 的包名，无法重建 insert 行（请在状态文件/手动补 name）` }
+      return { ok: false, reason: `缺少 "${id}" 的包名，无法重建（请在状态文件/手动补 name）` }
+    }
+    if (view.source === 'bundle') {
+      const bundles = this.readBundleNames()
+      if (bundles.includes(name)) return { ok: false, reason: `"${name}" 已在 bundles 中` }
+      bundles.push(name)
+      const result = this.writeBundleNames(bundles)
+      if (!result.ok) return { ok: false, reason: result.reason }
+      return { ok: true, id, enabled: true }
     }
     const rows = this.readPatchRows()
     if (rows.some(r => String(r.id) === id)) return { ok: false, reason: `"${id}" 已在 patch 中` }
@@ -442,8 +481,17 @@ export class PluginManager {
     for (const spec of this.readSpecs()) map.set(spec.id, spec)
     for (const r of rows) {
       if (typeof r.id !== 'string' || typeof r.name !== 'string' || r.name === '') continue
-      map.set(r.id, { id: r.id, name: r.name })
+      map.set(r.id, { id: r.id, name: r.name, source: 'patch' })
     }
     this.persistSpecs([...map.values()])
+  }
+
+  /** 更新某规格的挂载来源（bundle 停用时记录，供重新启用走对路径）。 */
+  private setSpecSource(id: string, source: 'patch' | 'bundle'): void {
+    const specs = this.readSpecs()
+    const spec = specs.find(s => s.id === id)
+    if (spec === undefined) return
+    spec.source = source
+    this.persistSpecs(specs)
   }
 }
