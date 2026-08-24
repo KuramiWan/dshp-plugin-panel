@@ -4,7 +4,7 @@
  * 只要求本包自己在 node_modules 装了 tsdown（devDep）与 peerDeps，不引用 deepseek-harness。
  *
  *   node build-client.mjs          → 生成 lib/client.js（tsdown.client.config.ts）
- *   node build-client.mjs --host   → 生成 lib/index.js（tsdown.host.config.ts，需先 tsc 产出 lib/types）
+ *   node build-client.mjs --host   → 生成 lib/index.js（tsdown.host.config.ts）
  *
  * 安装即用的发布包可预先提交 lib/（dsh-web-billing 同款），消费端无需构建。
  */
