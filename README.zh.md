@@ -123,6 +123,18 @@ flowchart LR
 
 > **注意：** 重写发生在 `node_modules` 里，`pnpm update` 或 `dsh plugin update` 会覆盖它、恢复 `dsh.bundle` 声明 —— 更新后需重新提升。原始 `package.json` 备份为 `package.json.bak`，需要回退时可用。
 
+### 侵入式插件
+
+有些插件不局限于 DSH 的插件接口，而是直接 monkey-patch DSH 的内部服务（如 `subprocess`、`sandbox`、`terminals`）或修改 `process.env`，并可能在安装时单向复制文件（如 agent preset）。
+
+面板只能挂载/卸载插件，无法撤销插件在进程内已经施加的改动：
+
+- **运行时 monkey-patch 不可逆。** 若插件修改了服务原型却没有返回 disposer，停用后这些改动仍留在内存里，只有重启 DSH 才能清除。
+- **单向文件同步会残留。** 若插件在安装时复制了文件（如 agent preset），卸载时不会删除它们，需要你手动清理。
+- **绕过沙箱是真实代价。** 某些 Windows 兼容插件会为 shell 工具关闭文件沙箱；停用插件后沙箱要重启才恢复。
+
+安装会深入 DSH 内部的插件前，先确认它 patch 了什么、能否干净地回退。
+
 ## Troubleshooting
 
 | 问题 | 怎么办 |

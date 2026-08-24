@@ -123,6 +123,18 @@ The **Make hot-pluggable** button converts a bundle plugin to a patch plugin, so
 
 > **Note:** The rewrite happens inside `node_modules`, so `pnpm update` or `dsh plugin update` overwrites it and restores the `dsh.bundle` declaration — promote again after updating. The original `package.json` is backed up as `package.json.bak` if you need to revert.
 
+### Invasive plugins
+
+Some plugins do not confine themselves to DSH's plugin seams. They monkey-patch DSH's internal services (e.g. `subprocess`, `sandbox`, `terminals`) or mutate `process.env` at runtime, and may copy files one-way (e.g. agent presets) on install.
+
+The panel can only mount and unmount a plugin — it cannot undo what a plugin already did inside the process:
+
+- **Runtime monkey-patches are irreversible.** A plugin that patches service prototypes without returning a disposer keeps its changes in memory after you disable it; only a DSH restart clears them.
+- **One-way file syncs persist.** A plugin that copies files (like agent presets) on install does not remove them on uninstall; you must delete them yourself.
+- **Sandbox bypass is a real trade-off.** Some Windows compatibility plugins disable the file sandbox for shell tools. Disabling the plugin does not restore the sandbox until restart.
+
+Before installing a plugin that reaches into DSH internals, review what it patches and whether it can be cleanly reverted.
+
 ## Troubleshooting
 
 | Problem | What to do |
