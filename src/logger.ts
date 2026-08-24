@@ -53,13 +53,14 @@ const recent: RecentLogEntry[] = []
 
 /** 读取近期日志（可过滤级别与条数）。 */
 export function recentLogs(limit = 100, minLevel?: 'error' | 'info' | 'warn' | 'debug'): RecentLogEntry[] {
-  const rank: Record<string, number> = { error: 0, info: 1, warn: 2, debug: 3 }
+  // severity 排序：error 最高、debug 最低。minLevel='warn' 表示"warn 及更严重"= error+warn。
+  const rank: Record<string, number> = { error: 3, warn: 2, info: 1, debug: 0 }
   const floor = minLevel === undefined ? -1 : (rank[minLevel] ?? -1)
-  // 由新到旧过滤，取满足级别的最多 limit 条，再倒回时间正序。
+  // 由新到旧过滤，取严重度 >= floor 的最多 limit 条，再倒回时间正序。
   const picked: RecentLogEntry[] = []
   for (let i = recent.length - 1; i >= 0 && picked.length < limit; i--) {
     const entry = recent[i]
-    if (entry !== undefined && (rank[entry.level] ?? 0) <= floor) picked.push(entry)
+    if (entry !== undefined && (rank[entry.level] ?? 0) >= floor) picked.push(entry)
   }
   return picked.reverse()
 }

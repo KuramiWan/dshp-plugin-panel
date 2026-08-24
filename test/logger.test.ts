@@ -54,10 +54,27 @@ test('installPanelLogging: 注册 3 个 exporter，文件写 JSON Lines 正确',
   assert.ok(written.includes('restore failed'))
 })
 
-test('recentLogs: 按级别过滤 + 倒序取最近 + 条数上限', () => {
-  // 手动向缓冲 exporter 写入需要经 installPanelLogging；直接验证 recentLogs 的过滤逻辑。
-  const empty = recentLogs(10, 'error')
-  assert.ok(Array.isArray(empty))
+test('recentLogs: minLevel 语义正确（A1 回归：warn 含 error+warn，不含 info）', () => {
+  // 用 installPanelLogging 注册的缓冲 exporter 写入各级别，再断言 recentLogs 过滤。
+  const exporters: Array<{ export: (m: unknown) => void }> = []
+  const collectingCtx = {
+    logger: { exporter: (exporter: unknown) => { exporters.push(exporter as { export: (m: unknown) => void }); return () => {} } },
+  }
+  installPanelLogging(collectingCtx as never, { logFile: join(testRoot, 'log2', '.dshp-skill-panel.log') })
+  const buf = exporters[2] // 第三个是缓冲 exporter
+  const levels: Array<[string, number]> = [['error', 0], ['info', 1], ['warn', 2], ['debug', 3]]
+  for (const [lv, level] of levels) buf.export({ ts: 1, type: lv, level, name: 'x', args: ['m'] })
+
+  const got = recentLogs(100, 'warn').map(e => e.level)
+  assert.ok(got.includes('error') && got.includes('warn'), `minLevel='warn' 应含 error+warn，实际 ${got.join(',')}`)
+  assert.ok(!got.includes('info') && !got.includes('debug'), `minLevel='warn' 不应含 info/debug，实际 ${got.join(',')}`)
+  const all = recentLogs(100).map(e => e.level)
+  assert.ok(all.includes('error') && all.includes('info') && all.includes('warn') && all.includes('debug'), '无 minLevel 应含全部级别')
+})
+
+test('recentLogs: 条数上限生效', () => {
+  const got = recentLogs(0)
+  assert.ok(Array.isArray(got))
 })
 
 test('RECENT_LIMIT: 导出常量存在且为正', () => {
