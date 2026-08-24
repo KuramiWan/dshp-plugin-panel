@@ -356,21 +356,34 @@ export class SessionMcpManager {
     return { ok: true }
   }
 
-  /** 读已禁用全局 MCP 的原始行（sidecar，供恢复）。 */
-  private readDisabledRows(): Record<string, HomePatchRow> {
+  /**
+   * 读已禁用全局 MCP 的原始行（sidecar，供恢复）。
+   * 返回值为「每 serverName 一组行」（M6 修复：支持同名多行）。旧版 sidecar 存单行
+   * 对象，这里归一化为数组以兼容旧文件。
+   */
+  private readDisabledRows(): Record<string, HomePatchRow[]> {
     if (!existsSync(this.disabledFile)) return {}
     const text = readTextFileSync(this.disabledFile)
     if (text === undefined) return {}
     try {
-      const data = JSON.parse(text) as Record<string, HomePatchRow>
-      return typeof data === 'object' && data !== null ? data : {}
+      const data = JSON.parse(text) as Record<string, unknown>
+      if (typeof data !== 'object' || data === null) return {}
+      const out: Record<string, HomePatchRow[]> = {}
+      for (const [name, val] of Object.entries(data)) {
+        if (Array.isArray(val)) {
+          out[name] = val.filter((r): r is HomePatchRow => r !== null && typeof r === 'object')
+        } else if (val !== null && typeof val === 'object') {
+          out[name] = [val as HomePatchRow] // 旧格式：单行对象
+        }
+      }
+      return out
     } catch {
       return {}
     }
   }
 
   /** 写已禁用全局 MCP 的原始行（sidecar）。 */
-  private writeDisabledRows(rows: Record<string, HomePatchRow>): void {
+  private writeDisabledRows(rows: Record<string, HomePatchRow[]>): void {
     try {
       mkdirSync(dirname(this.disabledFile), { recursive: true })
       atomicWriteFileSync(this.disabledFile, JSON.stringify(rows, null, 2))
@@ -379,21 +392,22 @@ export class SessionMcpManager {
     }
   }
 
-  /** 禁用全局 MCP：从 home 级 patch 移除该 serverName 的行，原始行存 sidecar。 */
+  /** 禁用全局 MCP：从 home 级 patch 移除该 serverName 的全部行，原始行存 sidecar。 */
   private disableGlobalMcp(serverName: string): { ok: true } | { ok: false; reason: string } {
     const options = this.readHomePatchOptions()
-    let removed: HomePatchRow | undefined
+    // M6 修复：收集所有匹配行（可能有同名多行），恢复时全部还原，避免只存最后一行导致其它行丢失。
+    const removed: HomePatchRow[] = []
     const next: HomePatchOption[] = options.map(opt => {
       if (opt === null || typeof opt !== 'object' || !Array.isArray(opt.insert)) return opt
       const insert = opt.insert.filter(row => {
         const cfg = (row as { config?: unknown })?.config as { serverName?: unknown } | undefined
         const isTarget = typeof cfg?.serverName === 'string' && cfg.serverName === serverName
-        if (isTarget) removed = row
+        if (isTarget) removed.push(row)
         return !isTarget
       })
       return { ...opt, insert }
     })
-    if (removed === undefined) return { ok: true } // 无全局行，no-op
+    if (removed.length === 0) return { ok: true } // 无全局行，no-op
     const result = this.writeHomePatchOptions(next)
     if (!result.ok) return { ok: false, reason: result.reason }
     const disabled = this.readDisabledRows()
@@ -402,25 +416,37 @@ export class SessionMcpManager {
     return { ok: true }
   }
 
-  /** 恢复全局 MCP：从 sidecar 取原始行，加回 home 级 patch。 */
+  /** 恢复全局 MCP：从 sidecar 取全部原始行，加回 home 级 patch。 */
   private restoreGlobalMcp(serverName: string): { ok: true } | { ok: false; reason: string } {
     const disabled = this.readDisabledRows()
-    const row = disabled[serverName]
-    if (row === undefined) return { ok: true } // 无 sidecar 记录，no-op
+    const rows = disabled[serverName]
+    if (rows === undefined || rows.length === 0) return { ok: true } // 无 sidecar 记录，no-op
     const options = this.readHomePatchOptions()
-    let insertOpt = options.find(opt => opt !== null && typeof opt === 'object' && Array.isArray(opt.insert))
-    if (insertOpt === undefined) {
-      insertOpt = { insert: [] }
-      options.push(insertOpt)
+    // M5 修复：'已存在'须扫所有 insert 块；M6 修复：对每行各自判断，缺失的才补回。
+    const existsInAnyBlock = (row: HomePatchRow): boolean => {
+      const cfg = (row as { config?: unknown })?.config as { serverName?: unknown } | undefined
+      const rowServer = typeof cfg?.serverName === 'string' ? cfg.serverName : undefined
+      return options.some(opt => {
+        if (opt === null || typeof opt !== 'object' || !Array.isArray(opt.insert)) return false
+        return opt.insert.some(r => {
+          const rcfg = (r as { config?: unknown })?.config as { serverName?: unknown } | undefined
+          return typeof rcfg?.serverName === 'string' && rowServer !== undefined && rcfg.serverName === rowServer
+        })
+      })
     }
-    const insert = insertOpt.insert as HomePatchRow[]
-    const already = insert.some(r => {
-      const cfg = (r as { config?: unknown })?.config as { serverName?: unknown } | undefined
-      return typeof cfg?.serverName === 'string' && cfg.serverName === serverName
-    })
-    if (!already) insert.push(row)
-    const result = this.writeHomePatchOptions(options)
-    if (!result.ok) return { ok: false, reason: result.reason }
+    // 逐行判断：已存在（同名）则跳过，缺失的收集待追加。
+    const toAdd = rows.filter(r => !existsInAnyBlock(r))
+    if (toAdd.length > 0) {
+      let insertOpt = options.find(opt => opt !== null && typeof opt === 'object' && Array.isArray(opt.insert))
+      if (insertOpt === undefined) {
+        insertOpt = { insert: [] }
+        options.push(insertOpt)
+      }
+      const insert = insertOpt.insert as HomePatchRow[]
+      insert.push(...toAdd)
+      const result = this.writeHomePatchOptions(options)
+      if (!result.ok) return { ok: false, reason: result.reason }
+    }
     delete disabled[serverName]
     this.writeDisabledRows(disabled)
     return { ok: true }
@@ -444,15 +470,22 @@ export class SessionMcpManager {
   }
 
   /** 派生唯一 serverName：前缀 + agent 标识哈希 + 白名单名哈希（≤32，合法字符）。 */
+  /**
+   * 派生唯一 serverName（H2 修复）：前缀 + 白名单名前缀（可读）+ agent+名完整 hash。
+   * 唯一性完全由 hash 承担；名字仅作可读前缀并截断，保证 hash 的 20 字符完整保留，
+   * 否则 32 字符上限会在长名时把 hash 整体截掉，导致不同 agent 连同一 server 时
+   * serverName 相同、连接被静默去重/顶掉。
+   */
   private deriveServerName(agent: Agent, whitelistName: string): string {
     const agentKey = (agent.session?.id ?? String(agent)) as string
     const hash = createHash('sha1')
       .update(`${agentKey}\0${whitelistName}`)
       .digest('hex')
       .slice(0, 20)
-    const base = `${SERVER_NAME_PREFIX}-${whitelistName}`
-    // 截断到 32 字符内，保留稳定性。
-    return `${base}-${hash}`.slice(0, 32)
+    // 前缀 `dshp-`(5) + `-`(1) + 名片段(5) + `-`(1) + hash(20) = 32，正好 ≤32 上限。
+    // hash 是唯一性来源，20 位完整保留；名字片段仅可读前缀，不影响区分不同 agent。
+    const namePart = whitelistName.slice(0, 5)
+    return `${SERVER_NAME_PREFIX}-${namePart}-${hash}`
   }
 
   /** 某 agent 当前已连的白名单名。 */
