@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-08-25
+
 ### Added
 - Structured logging: `ctx.logger` backend with console / JSON Lines file (`<dshHome>/.dshp-skill-panel.log`) / in-memory buffer exporters (ADR-0009); replaces bare `console.warn/error`.
 - Standalone read-only debugger `scripts/debug-dump.ts` (`pnpm debug`): pool scan, session introduce-set, config resolution, consistency self-check, and recent error/warn log clues (ADR-0010).
@@ -15,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - CI (`ci.yml`) now runs the full type-check (host + client), tests, build, and a `pack-check` preflight; release adds a `verify` gate before publish.
 - `prepublishOnly` runs the full type-check (including client).
+- Rewrote README (EN + zh): feature-domain structure (Skills / Plugins & MCP), added the `session_mcp_*` tools, corrected the global-layer management story, and linked a new observability SOP for agents.
 
 ### Fixed
 - `recentLogs` severity filter inverted: `minLevel='warn'` now returns error+warn, not error+info+warn.
@@ -83,7 +86,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added project governance: `LICENSE` (MIT, © 2026 super_camel),
   `CONTRIBUTING.md`, CI (lightweight type-check), Keep-a-Changelog file.
 
-[Unreleased]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.0...v0.1.1
