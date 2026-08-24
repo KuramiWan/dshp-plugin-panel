@@ -236,7 +236,14 @@ export class SessionMcpManager {
     if (!disabled.ok) return { ok: false, reason: disabled.reason }
     const saved = this.upsertTemplate(template)
     if (!saved.ok) {
-      void this.restoreGlobalMcp(name)
+      // M4 修复：回滚 restore 的结果不能静默丢弃——disableGlobalMcp 已把该行从 home
+      // patch 移除，若 restore 也失败，全局 MCP 会永久丢失且调用者无感知。记录日志并在
+      // reason 中体现，让用户能察觉并手动处理。
+      const restored = this.restoreGlobalMcp(name)
+      if (!restored.ok) {
+        this.context.logger('mcp').error(`select "${name}" rollback restore global failed: ${restored.reason}`)
+        return { ok: false, reason: `${saved.reason}（且回滚恢复全局失败：${restored.reason}）` }
+      }
       return { ok: false, reason: saved.reason }
     }
     const hasSecrets = (template.env !== undefined && Object.keys(template.env).length > 0)
@@ -515,11 +522,20 @@ export class SessionMcpManager {
     // 挂到 agent.ctx：mcp-client 的 ctx.get('tools') 落进该 agent scope。
     // apply 是 async（连接+首次工具发现）；failOnStartupError=true 时连接失败会 reject。
     // fiber.await() 等待启动收敛并重抛启动错误，据此把失败回传给调用方（不再静默吞掉）。
-    const fiber = agent.ctx.plugin(
-      { name: mcpApply.name, inject: mcpInject, apply: mcpApply } as
-      { name: string; inject: string[]; apply: (ctx: Context, cfg: unknown) => Promise<void> },
-      config,
-    )
+    let fiber: { await: () => Promise<unknown>; dispose: () => void }
+    try {
+      fiber = agent.ctx.plugin(
+        { name: mcpApply.name, inject: mcpInject, apply: mcpApply } as
+        { name: string; inject: string[]; apply: (ctx: Context, cfg: unknown) => Promise<void> },
+        config,
+      )
+    } catch (error) {
+      // M3 修复：agent.ctx.plugin() 可能同步 throw（mcp-client 初始化失败）。此时
+      // 前面已 add 的 ownedServerNames 若不清会永久污染 discover()，且调用方会收到
+      // 未处理异常而非 { ok:false }。同步清理并返回失败，与异步失败路径一致。
+      this.ownedServerNames.delete(serverName)
+      return { ok: false, reason: `连接 "${name}" 失败：${error instanceof Error ? error.message : String(error)}` }
+    }
 
     try {
       await this.awaitWithSignal(fiber.await(), signal)

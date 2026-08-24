@@ -112,3 +112,47 @@ test('旧格式 sidecar（单行对象）读取兼容', () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('M3 回归: connect 同步 throw 时应返回 ok:false 且不泄漏 ownedServerNames', async () => {
+  const root = mkdtempSync(join(testRoot, 'root-'))
+  try {
+    writeFileSync(join(root, '.mcp-whitelist.json'), JSON.stringify({
+      servers: [{ name: 'minimcp', transport: 'stdio', command: 'npx', args: [] }],
+    }))
+    const manager = new SessionMcpManager({ registry: new Map(), get: () => undefined }, root) as unknown as Mgr
+    // fake agent：ctx.plugin 同步 throw（mcp-client 同步初始化失败）
+    const agent = {
+      session: { id: 'sess-x' },
+      ctx: { plugin: () => { throw new Error('sync plugin init failed') } },
+    } as never
+    const res = await manager.connect(agent, 'minimcp')
+    assert.equal(res.ok, false, '同步 throw 应返回 ok:false 而非抛错')
+    assert.match((res as { reason: string }).reason, /sync plugin init failed/)
+    const owned = (manager as unknown as { ownedServerNames: Set<string> }).ownedServerNames
+    assert.equal(owned.size, 0, '同步 throw 后 ownedServerNames 不应泄漏')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('M4: select 白名单失败且回滚恢复也失败时，reason 应体现且记录日志', () => {
+  // 反射调用私有 select：registry 里有一个已配置 mcp 行（discoveredTemplates 命中），
+  // 但其 command 为空 → upsertTemplate 校验失败 → 走 restoreGlobalMcp 回滚分支。
+  const root = mkdtempSync(join(testRoot, 'root-'))
+  try {
+    const mgr = new SessionMcpManager(
+      {
+        registry: new Map([['x', { fibers: [{ name: 'mcp-x', state: 2, config: { serverName: 'mcp-x', transport: 'stdio' } }] }]]),
+        get: () => undefined,
+      },
+      root,
+    ) as unknown as Mgr
+    process.env.DSH_HOME = root
+    // stdio server 无 command（空串）→ upsertTemplate 校验失败，select 应返回 ok:false。
+    const res = mgr.select('mcp-x')
+    assert.equal(res.ok, false)
+  } finally {
+    process.env.DSH_HOME = originalDshHome
+    rmSync(root, { recursive: true, force: true })
+  }
+})
