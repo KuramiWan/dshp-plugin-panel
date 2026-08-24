@@ -56,8 +56,16 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # prepublishOnly runs `pnpm check:name && pnpm test && pnpm typecheck && pnpm build` before packing.
+      # Idempotent: if the tagged version is already published (e.g. published manually first),
+      # skip the publish instead of failing with E403, and still create the GitHub Release.
       - name: Publish to npm
-        run: pnpm publish --provenance --no-git-checks
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if npm view "@super_camel/dsh-skill-panel@${VERSION}" version >/dev/null 2>&1; then
+            echo "Version ${VERSION} already published; skipping npm publish."
+          else
+            pnpm publish --provenance --no-git-checks
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
