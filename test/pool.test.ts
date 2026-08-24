@@ -20,7 +20,7 @@ import {
 import { defaultDshHome } from '../src/home.ts'
 import { readTextFileSync } from '../src/fs.ts'
 
-const testRoot = join(fileURLToPath(new URL('.', import.meta.url)), '.tmp')
+const testRoot = join(fileURLToPath(new URL('.', import.meta.url)), '.tmp', 'pool-test')
 
 /** 在 test/.tmp 下建一个临时技能目录并写入 SKILL.md，返回目录路径。 */
 function makeSkill(raw: string): string {
