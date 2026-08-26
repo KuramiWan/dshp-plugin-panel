@@ -198,6 +198,26 @@ No. It manages your own folders only — no bundled skills, no subscription, no 
 
 If a skill isn't visible, check that it's a subdirectory containing a `SKILL.md` in one of the managed layers (`local/` or `~/.dsh/skills`), then refresh the panel.
 
+## Development environments
+
+This plugin supports three DSH profiles under one home (`~/.dsh`), managed by
+`setup-env.sh` with definitions in `envs.yaml`:
+
+| Profile | Code source | Purpose |
+|---|---|---|
+| `web` | npm release | production (not managed by setup) |
+| `dev` | `main` branch (clone → build → real copy) | development |
+| `test` | `test` branch + fixtures | testing (isolated skill pool via `poolRoot`) |
+
+```bash
+./setup-env.sh dev     # build ~/.dsh/profiles/dev from main
+./setup-env.sh test    # build ~/.dsh/profiles/test from test + fixtures
+dsh --profile dev --port 3081
+dsh --profile test --port 3081
+```
+
+Fresh clones must run `pnpm install && pnpm build` — `lib/` is not committed.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, building, and testing.
