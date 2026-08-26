@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+#
+# dsh-dev / dsh-test —— dev/test 环境的 DSH 启动封装。
+#
+# 设计（与 grilling 定案一致）：
+#   - dev/test 各自独立 DSH_HOME（整体隔离，不碰生产 ~/.dsh 的数据/会话/技能池）
+#   - 凭证默认不注入（测试环境保持干净）；--with-creds 才读生产 ~/.dsh/.credentials.yaml
+#     的 refs 注入子进程 env（继承环境变量 > 凭证文件，见 dsh-credentials-local 解析优先级）
+#   - 内部 exec `dsh web`（web 是 launcher 对 --profile web 的别名；DSH_HOME 决定装哪个环境）
+#
+# 用法：
+#   ./dsh-dev --port 3091                    # 启动 dev 环境（不带凭证；web 可省）
+#   ./dsh-test --port 3092                   # 启动 test 环境（不带凭证）
+#   ./dsh-test --with-creds --port 3092      # 启动 test 环境 + 注入生产凭证
+#   ./dsh-dev --dump-config                  # 查看 dev 环境组合树（不启动）
+#
+# 注意：--with-creds 必须放在 dsh 参数之前（本脚本自己消费）。
+# 凭证读取用 node（复用 dsh 安装里的 js-yaml），只注入 refs，不落盘、不输出值。
+
+set -euo pipefail
+
+# ---- 0. 环境选择 ----
+SCRIPT_NAME="$(basename "$0")"
+case "$SCRIPT_NAME" in
+  dsh-dev)  ENV_NAME="dev" ;;
+  dsh-test) ENV_NAME="test" ;;
+  *) echo "usage: 以 dsh-dev 或 dsh-test 命名本脚本（或 symlink）"; exit 2 ;;
+esac
+
+# ---- 1. 定位 ----
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DSH_HOME_TARGET="$PROJECT_ROOT/.dsh-$ENV_NAME"
+DASH_HOME_SRC="${DSH_HOME_SRC:-$HOME/.dsh}"        # 生产 home（凭证来源，可用环境变量覆盖）
+WITH_CREDS=0
+
+# ---- 2. 解析自身参数（--with-creds 归本脚本；其余全透传给 dsh） ----
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --with-creds) WITH_CREDS=1 ;;
+    # 用户可能习惯性带 web（等同 --profile web），wrapper 已固定 dsh web，去重
+    web) : ;;
+    *) ARGS+=("$arg") ;;
+  esac
+done
+
+# ---- 3. 校验目标 home 已搭建 ----
+if [ ! -f "$DSH_HOME_TARGET/profiles/web/package.json" ]; then
+  echo "错误: $DSH_HOME_TARGET 未搭建。请先运行 setup-env.sh $ENV_NAME" >&2
+  exit 1
+fi
+
+# ---- 4. 凭证注入（仅 --with-creds） ----
+if [ "$WITH_CREDS" = "1" ]; then
+  if [ ! -f "$DASH_HOME_SRC/.credentials.yaml" ]; then
+    echo "警告: $DASH_HOME_SRC/.credentials.yaml 不存在，跳过凭证注入" >&2
+  else
+    # 用 node + dsh 安装的 js-yaml 解析 refs（只读，不输出值）
+    # shellcheck disable=SC2016
+    EXPORTED="$(SRC_CRED="$DASH_HOME_SRC/.credentials.yaml" node -e '
+      const fs = require("fs");
+      const yaml = require("/usr/lib/node_modules/@deepseek-ai/dsh/node_modules/js-yaml");
+      const doc = yaml.load(fs.readFileSync(process.env.SRC_CRED, "utf8"));
+      const out = [];
+      for (const [ref, val] of Object.entries(doc.refs ?? {})) {
+        if (typeof val === "string" && val.length > 0 && !(ref in process.env)) {
+          out.push(`export ${ref}=${JSON.stringify(val)}`);
+        }
+      }
+      process.stdout.write(out.join("\n"));
+    ')"
+    if [ -n "$EXPORTED" ]; then
+      # shellcheck disable=SC1090
+      eval "$EXPORTED"
+      echo "[$ENV_NAME] 已注入凭证 refs（--with-creds）" >&2
+    else
+      echo "[$ENV_NAME] --with-creds 但无可用 refs（或已在环境中）" >&2
+    fi
+  fi
+fi
+
+# ---- 5. 启动 ----
+export DSH_HOME="$DSH_HOME_TARGET"
+exec dsh web "${ARGS[@]}"
