@@ -71,8 +71,9 @@ so the package builds independently of the DSH source tree.
 
 - `build-client.mjs` is the standalone bundle script (`node build-client.mjs`
   → client; `--host` → host).
-- The prebuilt `lib/` is committed (same as dsh-web-billing), so consumers
-  install and use it without building.
+- `lib/` is **not** committed (build artifacts stay out of git). Fresh clones
+  must run `pnpm install && pnpm build` before running or testing — see the
+  `## Development` block above.
 - `cordis.patch.yml` declares the `dsh.bundle` patch injected on install.
 
 ## Testing / validation
