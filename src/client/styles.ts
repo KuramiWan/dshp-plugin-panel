@@ -61,6 +61,28 @@ const CSS = `
 .dshp-section-title{font-size:13px;font-weight:700;line-height:20px;color:var(--dsw-alias-label-primary,#1f2328);margin:16px 0 4px}
 .dshp-section-title:first-of-type{margin-top:6px}
 .dshp-tips{font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary,#9ca3af);border-left:3px solid var(--dsw-alias-border-l2,rgba(128,128,128,.4));padding-left:8px;margin-bottom:2px}
+/* 插件页签四类 section：左色条 + 标题底色承载来源语义 */
+.dshp-plugin-section{display:flex;flex-direction:column;gap:6px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.25));border-left-width:3px;border-radius:8px;padding:8px 10px;background:var(--dsw-alias-bg-layer-1,transparent)}
+.dshp-plugin-section-head{display:flex;align-items:center;gap:6px;width:100%;background:transparent;border:0;padding:0;cursor:pointer;color:var(--dsw-alias-label-primary,#1f2328);font-size:12px;line-height:18px;text-align:left}
+.dshp-plugin-section-caret{flex:0 0 auto;color:var(--dsw-alias-label-secondary,#4b5563)}
+.dshp-plugin-section-name{font-weight:600;font-size:13px;line-height:20px}
+.dshp-plugin-section-count{color:var(--dsw-alias-label-secondary,#9ca3af)}
+.dshp-plugin-section-hint{font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary,#4b5563);padding:2px 0 4px}
+/* 来源 → 边框色映射：core 灰、patch 蓝、bundle 橙、mcp 紫 */
+.dshp-plugin-section-core{border-left-color:var(--dsw-alias-label-secondary,#9ca3af)}
+.dshp-plugin-section-patch{border-left-color:var(--dsw-alias-brand-primary,#2563eb)}
+.dshp-plugin-section-bundle{border-left-color:var(--dsw-alias-state-warn-primary,#d97706)}
+.dshp-plugin-section-mcp{border-left-color:#7c3aed}
+/* 行内：把名字/状态/操作放第一行，来源/包名/连接/保护放第二行（视觉呼吸） */
+.dshp-item-body{display:flex;flex-direction:column;gap:6px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.25));border-radius:8px;padding:8px 10px}
+.dshp-item-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dshp-item-line-meta{font-size:11px;color:var(--dsw-alias-label-secondary,#9ca3af)}
+/* 顶栏添加下拉 */
+.dshp-add-wrap{position:relative;flex:0 0 auto}
+.dshp-add-menu{position:absolute;top:calc(100% + 4px);right:0;z-index:10;display:flex;flex-direction:column;gap:2px;min-width:180px;border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.4));border-radius:6px;background:var(--dsw-alias-bg-base,#fff);padding:4px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.dshp-add-menu button{justify-content:flex-start;width:100%;text-align:left;font-size:12px;line-height:18px;padding:4px 8px;border-radius:4px;border:0;background:transparent;color:var(--dsw-alias-label-primary,#1f2328);cursor:pointer}
+.dshp-add-menu button:hover{background:var(--dsw-alias-bg-layer-2,rgba(128,128,128,.12))}
+.dshp-add-menu button[disabled]{opacity:.45;cursor:not-allowed}
 `
 
 export function ensureStyle(ctx: Context): void {

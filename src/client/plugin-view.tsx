@@ -8,10 +8,11 @@
  * - MCP 行额外动作：检查（真连一次数工具）、删除（移出白名单、恢复全局）。
  * 数据走 HTTP 客户端（api.ts）。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { SkillPanelLocaleDict } from './locale.ts'
 import type { SkillPanelClient } from './api.ts'
-import type { SkillPanelPluginEntry, SkillPanelMcpDiscovered } from '../types.ts'
+import type { SkillPanelPluginEntry, SkillPanelPluginSource, SkillPanelMcpDiscovered } from '../types.ts'
 import type { PanelNotice } from './notice.ts'
 
 export interface SkillPanelPluginViewProps {
@@ -46,6 +47,11 @@ function confirmStdio(transport: 'stdio' | 'streamable-http', t: (key: keyof Ski
   return window.confirm(t('mcp.trust.stdio'))
 }
 
+/** patch 行停用 = 改 cordis.patch.yml + 触发热重载，可能影响宿主。弹窗二次确认。 */
+function confirmPatchDisable(t: (key: keyof SkillPanelLocaleDict) => string): boolean {
+  return window.confirm(t('plugin.confirm.disablePatch'))
+}
+
 export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
   const { sessionId, client, t } = props
   const [plugins, setPlugins] = useState<SkillPanelPluginEntry[] | null>(null)
@@ -61,6 +67,9 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
   const [coreOpen, setCoreOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [query, setQuery] = useState('')
+  /** 顶栏「添加 ▾」下拉开关。单一态，菜单里点条目展开对应 form/mcp 列表。 */
+  const [addOpen, setAddOpen] = useState(false)
+  const addWrapRef = useRef<HTMLDivElement | null>(null)
 
   const refresh = (): void => {
     if (client === undefined) return
@@ -81,6 +90,23 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
   useEffect(() => {
     refresh()
   }, [sessionId])
+
+  /** 点击添加下拉外部时关闭菜单。 */
+  useEffect(() => {
+    if (!addOpen) return
+    const onDown = (e: MouseEvent): void => {
+      const wrap = addWrapRef.current
+      if (wrap === null || !wrap.contains(e.target as Node)) setAddOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [addOpen])
+
+  // 折叠态：patch / bundle / mcp 默认展开；core 默认收起（沿用现状）。
+  // 这三个 useState 必须在所有 early return 之前声明，保持 hooks 顺序稳定。
+  const [patchOpen, setPatchOpen] = useState(true)
+  const [bundleOpen, setBundleOpen] = useState(true)
+  const [mcpOpenSec, setMcpOpenSec] = useState(true)
 
   /** 统一执行面板写操作：busy 守卫 + 成功/失败提示 + 刷新。onOk 返回成功文案；afterOk 为成功副作用；failText 覆盖失败前缀（MCP 用 mcp.notice.failed）。 */
   const runAction = <T extends { ok: boolean; reason?: string }>(
@@ -107,6 +133,9 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
   }
 
   const runToggle = (entry: SkillPanelPluginEntry, enabled: boolean): void => {
+    // patch 停用 = 写 cordis.patch.yml + 触发热重载，写坏会中断宿主。弹窗确认。
+    // bundle / mcp 不弹：bundle 已「需重启」红标 + 不走热重载；mcp 走 stdio 信任闸。
+    if (!enabled && entry.source === 'patch' && !confirmPatchDisable(t)) return
     runAction(
       () => client!.pluginToggle({ sessionId, id: entry.id, enabled }),
       (r) => `${enabled ? t('plugin.notice.enabled') : t('plugin.notice.disabled')}: ${r.id}`,
@@ -177,15 +206,108 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
   }
 
   const list = plugins ?? []
-  // 内核插件（source==='core'）单独摘出，不进管理列表，折叠成只读摘要。
-  const core = list.filter(p => p.source === 'core')
-  const managed = list.filter(p => p.source !== 'core')
-  // 搜索过滤（按 id / 包名）。
+  // 物理分组：按 source 分桶，搜索在桶内过滤。
   const q = query.trim().toLowerCase()
-  const visibleManaged = q === ''
-    ? managed
-    : managed.filter(p => p.id.toLowerCase().includes(q) || (p.packageName ?? '').toLowerCase().includes(q))
+  const matches = (p: SkillPanelPluginEntry): boolean =>
+    q === '' || p.id.toLowerCase().includes(q) || (p.packageName ?? '').toLowerCase().includes(q)
+  const buckets: Record<Exclude<SkillPanelPluginSource, 'core'>, SkillPanelPluginEntry[]> = {
+    patch: list.filter(p => p.source === 'patch' && matches(p)),
+    bundle: list.filter(p => p.source === 'bundle' && matches(p)),
+    mcp: list.filter(p => p.source === 'mcp' && matches(p)),
+  }
+  // 搜索时若指定来源则过滤；否则只显示匹配项所在的桶。
+  const visibleCore = list.filter(p => p.source === 'core' && matches(p))
   const disc = discovered ?? []
+
+  /** 渲染单行：name + 状态 + 操作置顶（head），来源/包名/MCP/保护标记放底部 meta 行。 */
+  const renderItem = (p: SkillPanelPluginEntry, key: string): ReactNode => {
+    const sKey = stateKey(p.state)
+    const headTag = sKey === 'active' ? 'dshp-tag dshp-tag-intro' : sKey === 'failed' ? 'dshp-tag dshp-tag-error' : 'dshp-tag'
+    return (
+      <div className="dshp-item-body" key={key}>
+        <div className="dshp-item-line">
+          <span className="dshp-name">{p.id}</span>
+          <span className={headTag}>{t(STATE_LABEL[sKey])}</span>
+          <span className="dshp-actions">
+            {p.pendingRestart ? (
+              <span className="dshp-tag dshp-tag-eco">{t('plugin.badge.restart')}</span>
+            ) : p.manageable ? (
+              <>
+                {p.source === 'bundle' && p.active && (
+                  <button className="dshp-btn" onClick={() => runPromote(p)} disabled={busy}>{t('plugin.action.promote')}</button>
+                )}
+                {p.active
+                  ? <button className="dshp-btn dshp-btn-danger" onClick={() => runToggle(p, false)} disabled={busy}>{t('plugin.action.disable')}</button>
+                  : <button className="dshp-btn dshp-btn-primary" onClick={() => runToggle(p, true)} disabled={busy}>{t('plugin.action.enable')}</button>}
+                {p.source === 'mcp' && (
+                  <>
+                    <button className="dshp-btn" onClick={() => runCheck(p)} disabled={checking !== null}>
+                      {checking === p.id ? t('mcp.check.running') : t('mcp.action.check')}
+                    </button>
+                    <button className="dshp-btn dshp-btn-danger" onClick={() => runRemoveMcp(p)} disabled={busy}>{t('mcp.action.remove')}</button>
+                  </>
+                )}
+              </>
+            ) : null}
+          </span>
+        </div>
+        <div className="dshp-item-line dshp-item-line-meta">
+          <span className="dshp-tag">{t(SOURCE_LABEL[p.source])}</span>
+          {p.source === 'bundle' && (
+            <span className="dshp-tag dshp-tag-intro" title={t('plugin.section.bundle.hint')}>{t('plugin.badge.restart')}</span>
+          )}
+          {p.mcp !== undefined ? (
+            <>
+              <span className="dshp-tag dshp-tag-eco">{p.mcp.serverName}</span>
+              <span className="dshp-tag">{p.mcp.transport === 'stdio' ? t('mcp.transport.stdio') : t('mcp.transport.http')}</span>
+              <span className={p.mcp.connected ? 'dshp-tag dshp-tag-intro' : 'dshp-tag'}>
+                {p.mcp.connected ? t('plugin.mcp.connected') : t('plugin.mcp.available')}
+              </span>
+            </>
+          ) : (
+            p.packageName !== undefined && <span className="dshp-tag">{p.packageName}</span>
+          )}
+          {p.protected && <span className="dshp-tag dshp-tag-eco">{t('plugin.badge.protected')}</span>}
+        </div>
+      </div>
+    )
+  }
+
+  /** 渲染一个可折叠来源 section：标题（带计数） + hint + 内容（行 / 空态）。 */
+  const renderSection = (
+    source: Exclude<SkillPanelPluginSource, 'core'>,
+    sectionKey: 'patch' | 'bundle' | 'mcp',
+    open: boolean,
+    setOpen: (next: boolean) => void,
+    emptyText: string,
+  ): ReactNode => {
+    const items = buckets[source]
+    const headId = `dshp-plugin-section-${sectionKey}-head`
+    return (
+      <div className={`dshp-plugin-section dshp-plugin-section-${sectionKey}`}>
+        <button
+          className="dshp-plugin-section-head"
+          aria-expanded={open}
+          aria-controls={headId}
+          onClick={() => setOpen(!open)}
+        >
+          <span className="dshp-plugin-section-caret">{open ? '▾' : '▸'}</span>
+          <span className="dshp-plugin-section-name">{t(`plugin.section.${sectionKey}`)}</span>
+          <span className="dshp-plugin-section-count">（{items.length}）</span>
+        </button>
+        {open && (
+          <>
+            <div className="dshp-plugin-section-hint">{t(`plugin.section.${sectionKey}.hint`)}</div>
+            <div className="dshp-list" id={headId}>
+              {items.length === 0
+                ? <div className="dshp-empty">{emptyText}</div>
+                : items.map(p => renderItem(p, `${sectionKey}:${p.id}:${p.state}`))}
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="dshp-root">
@@ -200,19 +322,32 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
           value={query}
           onChange={event => setQuery(event.target.value)}
         />
+        <div className="dshp-add-wrap" ref={addWrapRef}>
+          <button className="dshp-btn" onClick={() => setAddOpen(o => !o)} disabled={busy}>
+            {t('plugin.action.add')} ▾
+          </button>
+          {addOpen && (
+            <div className="dshp-add-menu" role="menu">
+              <button
+                onClick={() => { setAddOpen(false); setInstallOpen(true); setMcpOpen(false) }}
+                disabled={busy}
+              >
+                {t('plugin.action.add.menu.plugin')}
+              </button>
+              <button
+                onClick={() => { setAddOpen(false); setMcpOpen(true); setInstallOpen(false); refreshDiscover() }}
+                disabled={busy}
+              >
+                {t('plugin.action.add.menu.mcp')}
+              </button>
+            </div>
+          )}
+        </div>
         <button className="dshp-btn dshp-help" title={t('plugin.help')} onClick={() => setHelpOpen(o => !o)}>
           {helpOpen ? '×' : '?'}
         </button>
       </div>
       {helpOpen && <div className="dshp-tips">{t('plugin.tips')}</div>}
-
-      <div className="dshp-section-title">
-        {t('plugin.inventory.title')}
-        <span className="dshp-actions" style={{ marginLeft: 'auto' }}>
-          <button className="dshp-btn" onClick={() => setInstallOpen(o => !o)}>{t('plugin.action.install')}</button>
-          <button className="dshp-btn" onClick={() => { setMcpOpen(o => !o); if (!mcpOpen) refreshDiscover() }}>{t('plugin.action.addMcp')}</button>
-        </span>
-      </div>
 
       {installOpen && (
         <div className="dshp-form">
@@ -275,85 +410,28 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
         </div>
       )}
 
-      {visibleManaged.length === 0 ? (
-        <div className="dshp-empty">{q !== '' ? t('list.empty') : t('plugin.inventory.empty')}</div>
-      ) : (
-        <div className="dshp-list">
-          {visibleManaged.map(p => {
-            const sKey = stateKey(p.state)
-            return (
-              <div className="dshp-item" key={`${p.id}:${p.state}`}>
-                <div className="dshp-item-head">
-                  <span className="dshp-name">{p.id}</span>
-                  <span className={sKey === 'active' ? 'dshp-tag dshp-tag-intro' : sKey === 'failed' ? 'dshp-tag dshp-tag-error' : 'dshp-tag'}>
-                    {t(STATE_LABEL[sKey])}
-                  </span>
-                  <span className="dshp-actions">
-                    {p.pendingRestart ? (
-                      <span className="dshp-tag dshp-tag-eco">{t('plugin.badge.restart')}</span>
-                    ) : p.manageable ? (
-                      <>
-                        {p.source === 'bundle' && p.active && (
-                          <button className="dshp-btn" onClick={() => runPromote(p)} disabled={busy}>{t('plugin.action.promote')}</button>
-                        )}
-                        {p.active
-                          ? <button className="dshp-btn dshp-btn-danger" onClick={() => runToggle(p, false)} disabled={busy}>{t('plugin.action.disable')}</button>
-                          : <button className="dshp-btn dshp-btn-primary" onClick={() => runToggle(p, true)} disabled={busy}>{t('plugin.action.enable')}</button>}
-                        {p.source === 'mcp' && (
-                          <>
-                            <button className="dshp-btn" onClick={() => runCheck(p)} disabled={checking !== null}>
-                              {checking === p.id ? t('mcp.check.running') : t('mcp.action.check')}
-                            </button>
-                            <button className="dshp-btn dshp-btn-danger" onClick={() => runRemoveMcp(p)} disabled={busy}>{t('mcp.action.remove')}</button>
-                          </>
-                        )}
-                      </>
-                    ) : null}
-                  </span>
-                </div>
-                <div className="dshp-item-meta">
-                  <span className="dshp-tag">{t(SOURCE_LABEL[p.source])}</span>
-                  {p.mcp !== undefined ? (
-                    <>
-                      <span className="dshp-tag dshp-tag-eco">{p.mcp.serverName}</span>
-                      <span className="dshp-tag">{p.mcp.transport === 'stdio' ? t('mcp.transport.stdio') : t('mcp.transport.http')}</span>
-                      <span className={p.mcp.connected ? 'dshp-tag dshp-tag-intro' : 'dshp-tag'}>
-                        {p.mcp.connected ? t('plugin.mcp.connected') : t('plugin.mcp.available')}
-                      </span>
-                    </>
-                  ) : (
-                    p.packageName !== undefined && <span className="dshp-tag">{p.packageName}</span>
-                  )}
-                  {p.protected && <span className="dshp-tag dshp-tag-eco">{t('plugin.badge.protected')}</span>}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      {renderSection('patch', 'patch', patchOpen, setPatchOpen, q !== '' ? t('list.empty') : t('plugin.inventory.empty'))}
+      {renderSection('bundle', 'bundle', bundleOpen, setBundleOpen, q !== '' ? t('list.empty') : t('plugin.inventory.empty'))}
+      {renderSection('mcp', 'mcp', mcpOpenSec, setMcpOpenSec, t('mcp.empty'))}
 
-      <button className="dshp-group-head" onClick={() => setCoreOpen(o => !o)}>
-        <span className="dshp-group-caret">{coreOpen ? '▾' : '▸'}</span>
-        <span className="dshp-group-name">{t('plugin.core.title')}</span>
-        <span className="dshp-group-count">（{core.length}）</span>
-      </button>
-      {coreOpen && (
-        <div className="dshp-list">
-          {core.map(p => {
-            const sKey = stateKey(p.state)
-            return (
-              <div className="dshp-item" key={`core:${p.id}`}>
-                <div className="dshp-item-head">
-                  <span className="dshp-name">{p.id}</span>
-                  <span className={sKey === 'active' ? 'dshp-tag dshp-tag-intro' : 'dshp-tag'}>{t(STATE_LABEL[sKey])}</span>
-                  {p.packageName !== undefined && <span className="dshp-tag">{p.packageName}</span>}
-                  <span className="dshp-tag dshp-tag-eco">{t('plugin.badge.protected')}</span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      <div className="dshp-plugin-section dshp-plugin-section-core">
+        <button
+          className="dshp-plugin-section-head"
+          aria-expanded={coreOpen}
+          onClick={() => setCoreOpen(o => !o)}
+        >
+          <span className="dshp-plugin-section-caret">{coreOpen ? '▾' : '▸'}</span>
+          <span className="dshp-plugin-section-name">{t('plugin.core.title')}</span>
+          <span className="dshp-plugin-section-count">（{visibleCore.length}）</span>
+        </button>
+        {coreOpen && (
+          <div className="dshp-list">
+            {visibleCore.length === 0
+              ? <div className="dshp-empty">{q !== '' ? t('list.empty') : t('plugin.inventory.empty')}</div>
+              : visibleCore.map(p => renderItem(p, `core:${p.id}`))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
