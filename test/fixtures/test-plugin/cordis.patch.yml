@@ -1,6 +1,0 @@
-# dshp-test-plugin bundle patch: 注册到 cordis composition 的最简空行。
-# 安装时通过 `dsh plugin --profile test add dshp-test-plugin` 注入。
-# id 与 fiber 内部名都设为 dshp-test-plugin，浏览器面板能识别。
-- insert:
-    - id: dshp-test-plugin
-      name: dshp-test-plugin
