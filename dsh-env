@@ -2,20 +2,19 @@
 #
 # dsh-dev / dsh-test —— dev/test 环境的 DSH 启动封装。
 #
-# 设计（与 grilling 定案一致）：
-#   - dev/test 各自独立 DSH_HOME（整体隔离，不碰生产 ~/.dsh 的数据/会话/技能池）
-#   - 凭证默认不注入（测试环境保持干净）；--with-creds 才读生产 ~/.dsh/.credentials.yaml
-#     的 refs 注入子进程 env（继承环境变量 > 凭证文件，见 dsh-credentials-local 解析优先级）
-#   - 内部 exec `dsh web`（web 是 launcher 对 --profile web 的别名；DSH_HOME 决定装哪个环境）
+# 方案（grilling 定案，2026-08）：官方 profile 机制。
+#   - 一个 DSH home（~/.dsh），dev/test 各自是独立 profile
+#   - 凭证/会话/设置共享（profile 机制天然如此），无需 --with-creds 注入
+#   - 隔离在组合层（node_modules + bundles + cordis.patch.yml 各自独立）
+#   - --with-creds 保留为兼容（旧 DSH_HOME 方案的注入逻辑），新方案下无必要
 #
 # 用法：
-#   ./dsh-dev --port 3091                    # 启动 dev 环境（不带凭证；web 可省）
-#   ./dsh-test --port 3092                   # 启动 test 环境（不带凭证）
-#   ./dsh-test --with-creds --port 3092      # 启动 test 环境 + 注入生产凭证
-#   ./dsh-dev --dump-config                  # 查看 dev 环境组合树（不启动）
+#   ./dsh-dev --port 3091          # 启动 dev profile
+#   ./dsh-test --port 3092         # 启动 test profile
+#   ./dsh-test --dump-config       # 查看 test 组合树（不启动）
+#   ./dsh-dev --profile dev ...    # （透传，wrapper 已带 --profile）
 #
-# 注意：--with-creds 必须放在 dsh 参数之前（本脚本自己消费）。
-# 凭证读取用 node（复用 dsh 安装里的 js-yaml），只注入 refs，不落盘、不输出值。
+# 前置：先运行 setup-env.sh <dev|test> 搭建对应 profile。
 
 set -euo pipefail
 
@@ -29,56 +28,29 @@ esac
 
 # ---- 1. 定位 ----
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DSH_HOME_TARGET="$PROJECT_ROOT/.dsh-$ENV_NAME"
-DASH_HOME_SRC="${DSH_HOME_SRC:-$HOME/.dsh}"        # 生产 home（凭证来源，可用环境变量覆盖）
-WITH_CREDS=0
+DSH_HOME_TARGET="${DSH_HOME_TARGET:-$HOME/.dsh}"
 
-# ---- 2. 解析自身参数（--with-creds 归本脚本；其余全透传给 dsh） ----
+# ---- 2. 透传参数（用户显式传 --profile 时以用户的为准） ----
 ARGS=()
 for arg in "$@"; do
   case "$arg" in
-    --with-creds) WITH_CREDS=1 ;;
-    # 用户可能习惯性带 web（等同 --profile web），wrapper 已固定 dsh web，去重
-    web) : ;;
+    # 兼容旧用法：--with-creds 在新方案下无意义（凭证共享），静默接受
+    --with-creds) : ;;
     *) ARGS+=("$arg") ;;
   esac
 done
 
-# ---- 3. 校验目标 home 已搭建 ----
-if [ ! -f "$DSH_HOME_TARGET/profiles/web/package.json" ]; then
-  echo "错误: $DSH_HOME_TARGET 未搭建。请先运行 setup-env.sh $ENV_NAME" >&2
+# ---- 3. 校验 profile 已搭建 ----
+if [ ! -f "$DSH_HOME_TARGET/profiles/$ENV_NAME/package.json" ]; then
+  echo "错误: profile $ENV_NAME 未搭建。请先运行 setup-env.sh $ENV_NAME" >&2
   exit 1
 fi
 
-# ---- 4. 凭证注入（仅 --with-creds） ----
-if [ "$WITH_CREDS" = "1" ]; then
-  if [ ! -f "$DASH_HOME_SRC/.credentials.yaml" ]; then
-    echo "警告: $DASH_HOME_SRC/.credentials.yaml 不存在，跳过凭证注入" >&2
-  else
-    # 用 node + dsh 安装的 js-yaml 解析 refs（只读，不输出值）
-    # shellcheck disable=SC2016
-    EXPORTED="$(SRC_CRED="$DASH_HOME_SRC/.credentials.yaml" node -e '
-      const fs = require("fs");
-      const yaml = require("/usr/lib/node_modules/@deepseek-ai/dsh/node_modules/js-yaml");
-      const doc = yaml.load(fs.readFileSync(process.env.SRC_CRED, "utf8"));
-      const out = [];
-      for (const [ref, val] of Object.entries(doc.refs ?? {})) {
-        if (typeof val === "string" && val.length > 0 && !(ref in process.env)) {
-          out.push(`export ${ref}=${JSON.stringify(val)}`);
-        }
-      }
-      process.stdout.write(out.join("\n"));
-    ')"
-    if [ -n "$EXPORTED" ]; then
-      # shellcheck disable=SC1090
-      eval "$EXPORTED"
-      echo "[$ENV_NAME] 已注入凭证 refs（--with-creds）" >&2
-    else
-      echo "[$ENV_NAME] --with-creds 但无可用 refs（或已在环境中）" >&2
-    fi
-  fi
-fi
-
-# ---- 5. 启动 ----
+# ---- 4. 启动 ----
 export DSH_HOME="$DSH_HOME_TARGET"
-exec dsh web "${ARGS[@]}"
+# 用户显式 --profile 优先，否则用本脚本对应 profile
+if printf '%s\n' "${ARGS[@]}" | grep -q -- "--profile"; then
+  exec dsh "${ARGS[@]}"
+else
+  exec dsh --profile "$ENV_NAME" "${ARGS[@]}"
+fi

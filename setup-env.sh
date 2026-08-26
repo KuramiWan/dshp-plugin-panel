@@ -1,35 +1,61 @@
 #!/usr/bin/env bash
 #
-# setup-env.sh —— 一键搭建 dshp-skill-panel 的 dev/test 独立环境。
+# setup-env.sh —— 一键搭建 dshp-skill-panel 的 dev/test profile。
 #
-# 设计（grilling 定案）：
-#   - 整体隔离：dev/test 各自独立 DSH_HOME（$PROJECT_ROOT/.dsh-<env>），不碰生产 ~/.dsh
-#   - 面板代码：git clone 对应分支 → pnpm install → pnpm build → 真副本装入
-#     <home>/profiles/web/node_modules/@super_camel/dsh-skill-panel（非软链）
-#   - fixtures（仅 test）：skill-pool → <home>/.skill-pool/local/，
-#     test-plugin → <home>/profiles/web/node_modules/dshp-test-plugin，
-#     test-profile/cordis.patch.yml → <home>/profiles/web/cordis.patch.yml
-#   - 生成 wrapper：dsh-dev / dsh-test（凭证 env 注入、--with-creds）
+# 方案（grilling 定案，2026-08）：官方 profile 机制。
+#   一个 DSH home（~/.dsh），多个 profile 区分环境：
+#     web   生产（npm 发布版，本脚本不管理）
+#     dev   main 分支代码（clone → build → 真副本装入 ~/.dsh/profiles/dev）
+#     test  test 分支代码 + fixtures（真副本 + poolRoot 隔离技能池）
+#   共享：~/.dsh 凭证/会话/设置（profile 机制天然如此）。
+#   隔离：组合层（每 profile 独立 node_modules + bundles + patch）；技能池
+#         （test 用 poolRoot 指到独立 pool，fixtures 不污染生产技能页签）。
+#
+# 环境定义唯一真相源：envs.yaml（本仓库根）。
 #
 # 用法：
-#   ./setup-env.sh dev     # 搭 dev 环境（clone main 分支）
-#   ./setup-env.sh test    # 搭 test 环境（clone test 分支 + fixtures）
+#   ./setup-env.sh dev      # 搭 dev profile
+#   ./setup-env.sh test     # 搭 test profile
 #   ./setup-env.sh dev --reclone   # 强制重新 clone
 #
-# 前置：git、pnpm、node ≥ 20；dsh 在 PATH（wrapper 需要）。
+# 前置：git、pnpm、node ≥ 20；dsh 在 PATH；envs.yaml 在仓库根。
 
 set -euo pipefail
 
 ENV_NAME="${1:-}"
 [ -n "$ENV_NAME" ] || { echo "用法: $0 <dev|test> [--reclone]"; exit 2; }
-case "$ENV_NAME" in
-  dev)  BRANCH="main";   WITH_FIXTURES=0 ;;
-  test) BRANCH="test";   WITH_FIXTURES=1 ;;
-  *) echo "错误: 未知环境 $ENV_NAME（应为 dev 或 test）"; exit 2 ;;
-esac
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HOME_TARGET="$PROJECT_ROOT/.dsh-$ENV_NAME"
+ENVS_FILE="$PROJECT_ROOT/envs.yaml"
+[ -f "$ENVS_FILE" ] || { echo "错误: 缺少 $ENVS_FILE（环境定义）"; exit 2; }
+
+# 读 envs.yaml（用 node + js-yaml，dsh 安装自带）
+# shellcheck disable=SC2016
+ENV_JSON="$(ENVS_FILE="$ENVS_FILE" node -e '
+  const fs = require("fs");
+  const yaml = require("/usr/lib/node_modules/@deepseek-ai/dsh/node_modules/js-yaml");
+  const doc = yaml.load(fs.readFileSync(process.env.ENVS_FILE, "utf8"));
+  const name = process.argv[1];
+  const env = doc.profiles?.[name];
+  if (!env) { console.error(`envs.yaml 未定义 profile: ${name}`); process.exit(1); }
+  process.stdout.write(JSON.stringify(env));
+' "$ENV_NAME")"
+[ -n "$ENV_JSON" ] || exit 2
+
+# 一次 node 解析出各字段（避免多次子进程）
+BRANCH="$(printf '%s' "$ENV_JSON" | node -e 'const e=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(e.branch??"")')"
+MANAGED="$(printf '%s' "$ENV_JSON" | node -e 'const e=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(String(e.managed??true))')"
+WITH_FIXTURES="$(printf '%s' "$ENV_JSON" | node -e 'const e=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(String(e.fixtures??false))')"
+POOL_MODE="$(printf '%s' "$ENV_JSON" | node -e 'const e=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(e.pool??"default")')"
+
+if [ "$MANAGED" != "true" ]; then
+  echo "错误: profile $ENV_NAME 标记 managed=false（生产环境不归本脚本管理，用 restore-web-profile.sh）" >&2
+  exit 2
+fi
+[ -n "$BRANCH" ] || { echo "错误: envs.yaml 未给 $ENV_NAME 定义 branch" >&2; exit 2; }
+
+DSH_HOME_TARGET="${DSH_HOME_TARGET:-$HOME/.dsh}"
+PROFILE_DIR="$DSH_HOME_TARGET/profiles/$ENV_NAME"
 CHECKOUT="$PROJECT_ROOT/checkouts/dshp-skill-panel-$ENV_NAME"
 REPO_URL="https://github.com/KuramiWan/dshp-skill-panel.git"
 RECLONE=0
@@ -38,20 +64,20 @@ RECLONE=0
 log()  { printf '\033[36m[setup-%s]\033[0m %s\n' "$ENV_NAME" "$*"; }
 die()  { printf '\033[31m[setup-%s] ERROR: %s\033[0m\n' "$ENV_NAME" "$*" >&2; exit 1; }
 
-# ---- 1. clone（复用已有 checkout，--reclone 强制重来） ----
+# ---- 1. clone（复用已有 checkout 时先 fetch 更新，--reclone 强制重来） ----
 if [ ! -d "$CHECKOUT/.git" ] || [ "$RECLONE" = "1" ]; then
   log "clone $BRANCH 分支 → $CHECKOUT"
   rm -rf "$CHECKOUT"
   git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$CHECKOUT"
 else
-  log "复用已有 checkout $CHECKOUT（--reclone 可强制重来）"
+  log "复用已有 checkout $CHECKOUT，fetch 更新…"
+  git -C "$CHECKOUT" fetch origin "$BRANCH" --depth 1 2>/dev/null || true
+  git -C "$CHECKOUT" reset --hard "origin/$BRANCH" 2>/dev/null || true
 fi
 
 # ---- 2. build（clone 后必须 build：lib/ 不进 git） ----
 log "pnpm install + build（lib/ 由 build 生成）"
 cd "$CHECKOUT"
-# 指定 store-dir：沙箱/受限环境里 pnpm 默认 store 的 SQLite 可能打不开；
-# 宿主终端若想用默认 store，可设 PNPM_STORE_DIR="" 走系统默认。
 if [ -n "${PNPM_STORE_DIR:-}" ]; then
   pnpm install --store-dir "$PNPM_STORE_DIR"
 else
@@ -60,11 +86,10 @@ fi
 pnpm build
 [ -f lib/index.js ] && [ -f lib/client.js ] || die "build 未产出 lib/index.js + lib/client.js"
 
-# ---- 3. 创建独立 home 的 profile 骨架 ----
-log "创建 $HOME_TARGET/profiles/web"
-mkdir -p "$HOME_TARGET/profiles/web/node_modules/@super_camel"
-mkdir -p "$HOME_TARGET/profiles/node_modules"
-cat > "$HOME_TARGET/profiles/web/package.json" <<EOF
+# ---- 3. 创建 profile 骨架 ----
+log "创建 $PROFILE_DIR"
+mkdir -p "$PROFILE_DIR/node_modules/@super_camel"
+cat > "$PROFILE_DIR/package.json" <<EOF
 {
   "name": "dsh-profile-$ENV_NAME",
   "private": true,
@@ -83,25 +108,37 @@ EOF
 
 # ---- 4. 面板代码真副本装入 profile ----
 log "装入面板真副本（非软链）"
-rm -rf "$HOME_TARGET/profiles/web/node_modules/@super_camel/dsh-skill-panel"
-cp -r "$CHECKOUT" "$HOME_TARGET/profiles/web/node_modules/@super_camel/dsh-skill-panel"
-[ -L "$HOME_TARGET/profiles/web/node_modules/@super_camel/dsh-skill-panel" ] && die "意外产生软链"
+rm -rf "$PROFILE_DIR/node_modules/@super_camel/dsh-skill-panel"
+cp -r "$CHECKOUT" "$PROFILE_DIR/node_modules/@super_camel/dsh-skill-panel"
+[ -L "$PROFILE_DIR/node_modules/@super_camel/dsh-skill-panel" ] && die "意外产生软链"
 
 # ---- 5. fixtures（仅 test） ----
-if [ "$WITH_FIXTURES" = "1" ]; then
+if [ "$WITH_FIXTURES" = "true" ]; then
   log "落地 test fixtures"
-  # 5a. skill-pool → <home>/.skill-pool/local/（面板只扫 local/）
-  mkdir -p "$HOME_TARGET/.skill-pool/local"
-  cp -r "$CHECKOUT/test/fixtures/skill-pool/." "$HOME_TARGET/.skill-pool/local/"
+  # 5a. skill-pool → 独立 pool（poolRoot 隔离，不污染生产技能页签）
+  if [ "$POOL_MODE" = "isolated" ]; then
+    POOL_DIR="$PROJECT_ROOT/.pool-$ENV_NAME"
+    mkdir -p "$POOL_DIR/local"
+    cp -r "$CHECKOUT/test/fixtures/skill-pool/." "$POOL_DIR/local/"
+    log "技能池 → $POOL_DIR（poolRoot 隔离）"
+  else
+    mkdir -p "$DSH_HOME_TARGET/.skill-pool/local"
+    cp -r "$CHECKOUT/test/fixtures/skill-pool/." "$DSH_HOME_TARGET/.skill-pool/local/"
+    log "技能池 → $DSH_HOME_TARGET/.skill-pool/local（共享）"
+  fi
   # 5b. test-plugin → node_modules/dshp-test-plugin（包名出现）
-  rm -rf "$HOME_TARGET/profiles/web/node_modules/dshp-test-plugin"
-  cp -r "$CHECKOUT/test/fixtures/test-plugin" "$HOME_TARGET/profiles/web/node_modules/dshp-test-plugin"
-  # 5c. test-profile patch → profile 根
-  cp "$CHECKOUT/test/fixtures/test-profile/cordis.patch.yml" "$HOME_TARGET/profiles/web/cordis.patch.yml"
+  rm -rf "$PROFILE_DIR/node_modules/dshp-test-plugin"
+  cp -r "$CHECKOUT/test/fixtures/test-plugin" "$PROFILE_DIR/node_modules/dshp-test-plugin"
+  # 5c. test-profile patch → profile 根（含 dshp-test-plugin + test-mcp-stdio 行）
+  cp "$CHECKOUT/test/fixtures/test-profile/cordis.patch.yml" "$PROFILE_DIR/cordis.patch.yml"
+  # 5d. poolRoot 覆盖：面板行 config.poolRoot 指向独立 pool
+  if [ "$POOL_MODE" = "isolated" ]; then
+    printf '\n# poolRoot 隔离：fixtures 技能池不污染生产技能页签\n- id: dshp-skill-panel\n  config:\n    poolRoot: %s\n' "$POOL_DIR" >> "$PROFILE_DIR/cordis.patch.yml"
+  fi
   log "fixtures 就位：skill-pool ×4、dshp-test-plugin、test-mcp-stdio patch"
 else
   # dev 环境用干净 patch
-  cat > "$HOME_TARGET/profiles/web/cordis.patch.yml" <<'EOF'
+  cat > "$PROFILE_DIR/cordis.patch.yml" <<'EOF'
 # Your patch layer for this dsh profile, applied after every bundle layer:
 # a top-level YAML array of loader patch entries (id-targeted config
 # overrides, disables, and insert lists; `!!js` expressions allowed).
@@ -119,12 +156,12 @@ chmod +x "$PROJECT_ROOT/dsh-env"
 
 # ---- 7. 验证组合 ----
 log "验证组合（--dump-config 应含 dshp-skill-panel）"
-if DSH_HOME="$HOME_TARGET" dsh --profile web --dump-config 2>/dev/null | grep -q "dshp-skill-panel"; then
+if DSH_HOME="$DSH_HOME_TARGET" dsh --profile "$ENV_NAME" --dump-config 2>/dev/null | grep -q "dshp-skill-panel"; then
   log "组合正确"
 else
   die "组合验证失败：未找到 dshp-skill-panel"
 fi
 
 log "完成！启动方式："
-log "  ./dsh-$ENV_NAME --port 3081            # 不带凭证"
-log "  ./dsh-$ENV_NAME --with-creds --port 3081   # 注入生产凭证"
+log "  dsh --profile $ENV_NAME --port 3081   # 直接启动（凭证/会话共享 ~/.dsh）"
+log "  或 ./dsh-$ENV_NAME --port 3081        # wrapper"

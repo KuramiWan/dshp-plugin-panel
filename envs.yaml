@@ -1,0 +1,32 @@
+# envs.yaml —— dshp-skill-panel 环境定义（唯一真相源）
+#
+# 方案：官方 profile 机制。一个 DSH home（~/.dsh），多个 profile 区分环境：
+#   - web   生产：npm 发布版，setup 不管理（保持现状）
+#   - dev   开发：main 分支代码（clone → build → 真副本）
+#   - test  测试：test 分支代码 + fixtures（skill-pool / test-plugin / MCP patch）
+#
+# 共享（profile 机制天然如此）：~/.dsh 的凭证、会话、设置。
+# 隔离（profile 级配置）：
+#   - 组合层：每个 profile 独立 node_modules + bundles + cordis.patch.yml
+#   - 技能池：test 用 poolRoot 指到独立 pool 目录，fixtures 不污染生产技能页签
+#
+# setup-env.sh <name> 读本文件生成对应 profile。
+
+profiles:
+  web:
+    managed: false          # 生产：不归 setup 管理（npm 发布版，restore-web-profile.sh 处理）
+    branch: main
+    fixtures: false
+
+  dev:
+    managed: true
+    branch: main
+    fixtures: false
+    pool: default           # 共享技能池（~/.dsh/.skill-pool）
+
+  test:
+    managed: true
+    branch: test
+    fixtures: true
+    fixtures_source: test/fixtures
+    pool: isolated          # 独立技能池（.pool-<name>/，fixtures 隔离，不污染生产页签）
