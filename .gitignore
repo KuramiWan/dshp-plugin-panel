@@ -3,3 +3,6 @@ node_modules/
 .DS_Store
 npm-debug.log*
 test/.tmp/
+
+# 本地工具（不提交）
+scripts/switch-mount.sh
