@@ -8,7 +8,7 @@
  * 任何一层 tag 都跟着。启用/停用 = 目录在全局层与可用池间移动（不复制不删除）。
  * 数据走 HTTP 客户端（api.ts，相对路径 fetch）。
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { SkillPanelLocaleDict } from './locale.ts'
 import type { SkillPanelClient } from './api.ts'
@@ -132,6 +132,20 @@ export function SkillPanelView(props: SkillPanelViewProps) {
   const groupedPool = useMemo(() => groupByTags(poolItems), [poolItems, query])
   const groupedGlobal = useMemo(() => groupByTags(globalItems), [globalItems])
   const groupedIntroduced = useMemo(() => groupByTags(introducedItems), [introducedItems])
+
+  /** 首屏默认收起所有 tag 组（首份数据到达时一次性把全部键加入 collapsed）。
+   *  ref guard：避免搜索 query 变化重拉数据时覆盖用户的展开/收起选择。 */
+  const defaultCollapsedApplied = useRef(false)
+  useEffect(() => {
+    if (defaultCollapsedApplied.current) return
+    const allKeys: string[] = []
+    for (const [group] of groupedPool) allKeys.push(`pool:${group === '' ? 'ungrouped' : group}`)
+    for (const [group] of groupedGlobal) allKeys.push(`global:${group === '' ? 'ungrouped' : group}`)
+    for (const [group] of groupedIntroduced) allKeys.push(`introduced:${group === '' ? 'ungrouped' : group}`)
+    if (allKeys.length === 0) return
+    setCollapsed(new Set(allKeys))
+    defaultCollapsedApplied.current = true
+  }, [groupedPool, groupedGlobal, groupedIntroduced])
 
   const toggleGroup = (key: string): void => {
     setCollapsed(prev => {
