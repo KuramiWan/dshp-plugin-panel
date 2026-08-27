@@ -200,23 +200,70 @@ If a skill isn't visible, check that it's a subdirectory containing a `SKILL.md`
 
 ## Development environments
 
-This plugin supports three DSH profiles under one home (`~/.dsh`), managed by
-`setup-env.sh` with definitions in `envs.yaml`:
+This plugin supports three DSH profiles under one home (`~/.dsh`), using only
+official `dsh` commands — no setup script, no extra config file:
 
 | Profile | Code source | Purpose |
 |---|---|---|
-| `web` | npm release | production (not managed by setup) |
-| `dev` | `main` branch (clone → build → real copy) | development |
-| `test` | `test` branch + fixtures | testing (isolated skill pool via `poolRoot`) |
+| `web` | npm release | production |
+| `dev` | `main` branch checkout | development |
+| `test` | `test` branch checkout + fixtures | testing (isolated skill pool via `poolRoot`) |
+
+### Prerequisites
+
+- `dsh` on PATH, `pnpm`, `node ≥ 20`
+- A checkout of this repo on the branch you want (`main` for dev, `test` for test)
+- Fresh clones must run `pnpm install && pnpm build` — `lib/` is not committed.
+
+### dev / test — official commands only
 
 ```bash
-./setup-env.sh dev     # build ~/.dsh/profiles/dev from main
-./setup-env.sh test    # build ~/.dsh/profiles/test from test + fixtures
+# 1. build the panel checkout (required once; lib/ is git-ignored)
+cd dshp-skill-panel && pnpm install && pnpm build
+
+# 2. mount the panel into the profile — official entry point:
+#    creates the profile if missing (initProfile), runs pnpm add, then
+#    reconciles dsh.profile.bundles from installed state. Because the panel
+#    declares `dsh.bundle.patch`, it joins the bundle layer automatically.
+dsh plugin --profile dev add "$PWD/dshp-skill-panel"
+dsh plugin --profile test add "$PWD/dshp-skill-panel"
+
+# 3. (test only) fixtures — real copies, no symlinks
+#    a. test-plugin: copy into the profile's node_modules (NOT via dsh plugin
+#       add — adding it would double-mount: bundle layer + patch row share the
+#       same id and crash at boot). It mounts through the patch row below.
+mkdir -p ~/.dsh/profiles/test/node_modules
+cp -r test/fixtures/test-plugin ~/.dsh/profiles/test/node_modules/dshp-test-plugin
+#    b. profile patch: the fixtures file carries the dshp-test-plugin row
+#       (hot-pluggable) and the test-mcp-stdio MCP bridge row. It does NOT
+#       include a panel row — the panel mounts from its own bundle.patch.
+#       Back up first if you edited the profile patch by hand.
+cp test/fixtures/test-profile/cordis.patch.yml ~/.dsh/profiles/test/cordis.patch.yml
+#    c. isolated skill pool (optional): point poolRoot at a directory outside
+#       ~/.dsh so fixtures never pollute the production skill page.
+mkdir -p "$PWD/.pool-test/local"
+cp -r test/fixtures/skill-pool/. "$PWD/.pool-test/local/"
+#       then add the panel row to the profile patch (or rely on the panel's
+#       default pool; explicit poolRoot is only needed for isolation):
+#         - id: dshp-skill-panel
+#           config:
+#             poolRoot: $PWD/.pool-test
+
+# 4. start
 dsh --profile dev --port 3081
 dsh --profile test --port 3081
 ```
 
-Fresh clones must run `pnpm install && pnpm build` — `lib/` is not committed.
+The panel auto-detects which profile it runs in via `ctx.baseUrl` (set by dsh
+at boot to the profile directory) — no `profileDir` injection is needed.
+
+### Switching to `web` (production)
+
+`web` is the npm release — install the published package:
+
+```bash
+dsh plugin --profile web add @super_camel/dsh-skill-panel
+```
 
 ## Contributing
 
