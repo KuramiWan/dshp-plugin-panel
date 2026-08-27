@@ -129,7 +129,7 @@ if [ "$WITH_FIXTURES" = "true" ]; then
   # 5b. test-plugin → node_modules/dshp-test-plugin（包名出现）
   rm -rf "$PROFILE_DIR/node_modules/dshp-test-plugin"
   cp -r "$CHECKOUT/test/fixtures/test-plugin" "$PROFILE_DIR/node_modules/dshp-test-plugin"
-  # 5c. test-profile patch → profile 根（含 dshp-test-plugin + test-mcp-stdio 行）
+  # 5c. test-profile patch → profile 根（含 dshp-test-plugin 行；test-mcp-stdio 不走 patch，见 5e）
   cp "$CHECKOUT/test/fixtures/test-profile/cordis.patch.yml" "$PROFILE_DIR/cordis.patch.yml"
   # 5d. 面板行 config 注入：profileDir（显式声明本 profile，避免 resolveProfileDir 猜错回退 web）
   #      + poolRoot（isolated 时隔离技能池）
@@ -139,7 +139,23 @@ if [ "$WITH_FIXTURES" = "true" ]; then
       printf '    poolRoot: %s\n' "$POOL_DIR"
     fi
   } >> "$PROFILE_DIR/cordis.patch.yml"
-  log "fixtures 就位：skill-pool ×4、dshp-test-plugin、test-mcp-stdio patch"
+  # 5e. mcp 白名单（test-mcp-stdio 走 MCP 段管理）：若写进 profile patch 会被插件段
+  #     误当 patch 行（启停报"已在 patch 中"）。白名单让面板在 MCP 段以会话连接/断开。
+  #     位置跟随 poolRoot（mcp-manager 读 <poolRoot>/.mcp-whitelist.json）。
+  MCP_WHITELIST_ROOT="${POOL_DIR:-$DSH_HOME_TARGET/.skill-pool}"
+  cat > "$MCP_WHITELIST_ROOT/.mcp-whitelist.json" <<'EOF'
+{
+  "servers": [
+    {
+      "name": "test-mcp-stdio",
+      "transport": "stdio",
+      "command": "__nonexistent_fixture_server__",
+      "args": []
+    }
+  ]
+}
+EOF
+  log "fixtures 就位：skill-pool ×4、dshp-test-plugin、test-mcp-stdio（MCP 白名单）"
 else
   # dev 环境：干净 patch + 显式 profileDir（避免 resolveProfileDir 猜错回退 web）
   cat > "$PROFILE_DIR/cordis.patch.yml" <<EOF
