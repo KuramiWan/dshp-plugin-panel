@@ -182,15 +182,15 @@ pnpm debug --logs 20             # 最多包含 20 条最近的 error/warn 日�
 ## 开发环境
 
 插件支持一个 DSH home（`~/.dsh`）下多个 profile，仅用官方 `dsh` 命令搭建
-（无 setup 脚本、无额外配置文件）：
+（无 setup 脚本、无额外配置文件）。**单分支，环境差异由 profile 配置区分**：
 
 | Profile | 代码来源 | 用途 |
 |---|---|---|
 | `web` | npm 发布版 | 生产 |
-| `dev` | `main` 分支 checkout | 开发 |
-| `test` | `test` 分支 checkout + fixtures | 测试（`poolRoot` 隔离技能池） |
+| `dev` | 本仓库（main） | 开发 |
+| `test` | 本仓库（main）+ `test/fixtures/` | 测试（`poolRoot` 隔离技能池） |
 
-前置：`dsh` 在 PATH、`pnpm`、`node ≥ 20`；checkout 对应分支的仓库。
+前置：`dsh` 在 PATH、`pnpm`、`node ≥ 20`；本仓库（main 分支）checkout。
 **clone 后必须先 `pnpm install && pnpm build`**（`lib/` 不进 git）。
 
 ### dev / test —— 纯官方命令

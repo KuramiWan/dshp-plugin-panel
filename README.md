@@ -201,18 +201,19 @@ If a skill isn't visible, check that it's a subdirectory containing a `SKILL.md`
 ## Development environments
 
 This plugin supports three DSH profiles under one home (`~/.dsh`), using only
-official `dsh` commands — no setup script, no extra config file:
+official `dsh` commands — no setup script, no extra config file. One branch,
+environments differ by profile configuration:
 
 | Profile | Code source | Purpose |
 |---|---|---|
 | `web` | npm release | production |
-| `dev` | `main` branch checkout | development |
-| `test` | `test` branch checkout + fixtures | testing (isolated skill pool via `poolRoot`) |
+| `dev` | this repo (main) | development |
+| `test` | this repo (main) + `test/fixtures/` | testing (isolated skill pool via `poolRoot`) |
 
 ### Prerequisites
 
 - `dsh` on PATH, `pnpm`, `node ≥ 20`
-- A checkout of this repo on the branch you want (`main` for dev, `test` for test)
+- A checkout of this repo (main branch)
 - Fresh clones must run `pnpm install && pnpm build` — `lib/` is not committed.
 
 ### dev / test — official commands only
