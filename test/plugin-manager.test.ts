@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { pathToFileURL } from 'node:url'
 import { load as parseYaml } from 'js-yaml'
 import { PluginManager, PANEL_ROW_ID, PANEL_PACKAGE } from '../src/plugin-manager.ts'
 import type { SessionMcpManager } from '../src/mcp-manager.ts'
@@ -21,11 +22,12 @@ interface FakeFiber {
   entry?: { id?: string }
 }
 
-/** fake ctx：registry（可含 fibers）+ fiber 桩；mcp 桩返回空白名单。 */
-function makeCtx(fiber: FakeFiber = {}, registryFibers: FakeFiber[] = []): import('@deepseek-ai/cordis').Context {
+/** fake ctx：registry（可含 fibers）+ fiber 桩 + 可选 baseUrl（模拟 dsh boot 注入的 profile 目录）；mcp 桩返回空白名单。 */
+function makeCtx(fiber: FakeFiber = {}, registryFibers: FakeFiber[] = [], baseUrl?: string): import('@deepseek-ai/cordis').Context {
   return {
     registry: new Map([['plugin', { fibers: registryFibers }]]),
     fiber,
+    ...(baseUrl !== undefined ? { baseUrl } : {}),
   } as unknown as import('@deepseek-ai/cordis').Context
 }
 
@@ -630,6 +632,22 @@ test('M9: 停用插件不应删除同 patch 里的 mcp 桥接行（writePatch �
     assert.ok(patchText.includes('test-mcp-stdio'), '停用插件后 mcp 桥接行应保留')
     assert.ok(patchText.includes('__nonexistent_fixture_server__'), 'mcp 桥接行的 config 应原样保留')
     assert.ok(!patchText.includes('dshp-test-plugin'), '被停用的插件行应移除')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('E1: 构造器不传 profileDir 时从 ctx.baseUrl 派生所在 profile（不再需要 setup 注入）', () => {
+  // dsh boot 时 ctx.baseUrl = profile 目录的 file:// URL（dsh-app-boot 的 boot() 设置，
+  // 指向 profile 的 cordis.yml 所在目录）。面板应直接用它在正确的 profile 上管理，
+  // 而不是扫描 ~/.dsh/profiles 猜（旧方案需 setup 往 patch 注入 profileDir 才不猜错）。
+  const root = mkdtempSync(join(testRoot, 'profile-'))
+  // baseUrl 指向一个「并非默认 profile」的目录——若面板用扫描逻辑会猜错/回退 web。
+  const baseUrl = new URL('.', pathToFileURL(join(root, 'cordis.yml')).href).href
+  try {
+    // 不传第三个参数（profileDir）→ 从 ctx.baseUrl 派生
+    const manager = new PluginManager(makeCtx({}, [], baseUrl), makeMcpStub())
+    assert.equal(manager.profileDirPath, root, '应从 ctx.baseUrl 派生 profile 目录（去尾斜杠）')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

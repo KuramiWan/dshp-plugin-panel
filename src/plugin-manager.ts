@@ -29,7 +29,7 @@ import { load as parseYaml, dump as stringifyYaml } from 'js-yaml'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionMcpManager } from './mcp-manager.ts'
-import { defaultDshHome } from './home.ts'
+import { defaultDshHome, profileDirFromBaseUrl } from './home.ts'
 import { atomicWriteFileSync, readTextFileSync } from './fs.ts'
 import { isMcpClientConfig, registryFibers } from './registry.ts'
 
@@ -112,6 +112,7 @@ const DEFAULT_PROFILE = 'web'
 /**
  * 解析活动 profile 目录：优先「其 cordis.patch.yml 引用了本面板包」的那个 profile
  * （即正在挂载本插件、且面板要管理的组合所在），否则退回 web。
+ * 仅当 ctx.baseUrl 缺失（测试桩/非 dsh 环境）时作为回退。
  */
 function resolveProfileDir(): string {
   const profilesDir = join(defaultDshHome(), 'profiles')
@@ -135,7 +136,9 @@ export class PluginManager {
 
   constructor(ctx: Context, mcp: SessionMcpManager, profileDir?: string) {
     this.ctx = ctx
-    this.profileDir = profileDir ?? resolveProfileDir()
+    // profileDir 优先级：显式 config > ctx.baseUrl（所在 profile）> 扫描回退。
+    const ctxBaseUrl = (ctx as unknown as { baseUrl?: unknown })?.baseUrl
+    this.profileDir = profileDir ?? profileDirFromBaseUrl(ctxBaseUrl) ?? resolveProfileDir()
     this.patchFile = join(this.profileDir, 'cordis.patch.yml')
     this.stateFile = join(this.profileDir, '.dshp-plugins.json')
     this.mcp = mcp

@@ -18,6 +18,7 @@ import { SkillPanelService } from './skill-panel-service.ts'
 import { SessionMcpManager } from './mcp-manager.ts'
 import { PluginManager } from './plugin-manager.ts'
 import { resolvePoolRoot } from './pool.ts'
+import { profileDirFromBaseUrl } from './home.ts'
 import { SessionSkillStore } from './handles.ts'
 import { replaySession } from './actions.ts'
 import { installPanelLogging } from './logger.ts'
@@ -103,9 +104,12 @@ export class SkillControlPlugin {
 
   private init(ctx: Context, config: SkillControlConfig): void {
     const poolRoot = resolvePoolRoot(config.poolRoot)
+    // 面板所在 profile：显式 config.profileDir > ctx.baseUrl 派生（dsh boot 官方注入）> undefined。
+    // 两个管理器共享同一 profileDir，mcp 的 select/removeTemplate 才能处理 profile patch（M7）。
+    const profileDir = config.profileDir ?? profileDirFromBaseUrl((ctx as unknown as { baseUrl?: unknown })?.baseUrl)
     this.store = new SessionSkillStore(poolRoot, ctx.logger('store'))
-    this.mcp = new SessionMcpManager(ctx, poolRoot, config.profileDir)
-    this.plugins = new PluginManager(ctx, this.mcp, config.profileDir)
+    this.mcp = new SessionMcpManager(ctx, poolRoot, profileDir)
+    this.plugins = new PluginManager(ctx, this.mcp, profileDir)
     applySessionSkillTools(ctx, { poolRoot, store: this.store })
     applySessionSkillCommands(ctx, { poolRoot, store: this.store })
     applySessionMcpTools(ctx, { manager: this.mcp })
