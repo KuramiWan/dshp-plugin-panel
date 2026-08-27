@@ -195,3 +195,77 @@ test('H3 回归: 会话结束（agent.ctx 展开）后 usedCount 递减，remove
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('M7: select 应同时移除 profile patch 的 mcp 行（防双挂载），removeTemplate 恢复回 profile patch', () => {
+  // fixtures 场景：mcp 行在 profile patch（~/.dsh/profiles/test/cordis.patch.yml）。
+  // select（加入管理）应把它从 profile patch 移除（否则全局+会话双挂载）；
+  // removeTemplate（取消管理）应把它恢复回 profile patch（而非漂移到 home patch）。
+  const home = mkdtempSync(join(testRoot, 'm7-home-'))
+  const root = mkdtempSync(join(testRoot, 'm7-root-'))
+  const profile = mkdtempSync(join(testRoot, 'm7-profile-'))
+  writeFileSync(join(home, 'cordis.patch.yml'), '[]\n', 'utf8')
+  writeFileSync(join(profile, 'cordis.patch.yml'), [
+    '- insert:',
+    '    - id: test-mcp-stdio',
+    '      name: "@deepseek-ai/dsh-mcp-client"',
+    '      config: { serverName: test-mcp-stdio, transport: stdio, command: __nonexistent_fixture_server__ }',
+    '',
+  ].join('\n'), 'utf8')
+  process.env.DSH_HOME = home
+  // 构造带 profileDir 的 manager（第三个参数）
+  const manager = new SessionMcpManager(
+    { registry: new Map(), get: () => undefined },
+    root,
+    profile,
+  ) as unknown as Mgr
+  try {
+    // select：组合里有对应 fiber（discoveredTemplates 需要 registry）
+    const ctxWithFiber = {
+      registry: new Map([[Symbol('r'), { fibers: [{ name: 'test-mcp-stdio', state: 2, config: { serverName: 'test-mcp-stdio', transport: 'stdio', command: '__nonexistent_fixture_server__' } }] }]]),
+      get: () => undefined,
+    }
+    const mgr2 = new SessionMcpManager(ctxWithFiber, root, profile) as unknown as Mgr
+    const sel = mgr2.select('test-mcp-stdio')
+    assert.equal(sel.ok, true)
+    // 1. profile patch 的 mcp 行应被移除（防双挂载）
+    const profileText = readFileSync(join(profile, 'cordis.patch.yml'), 'utf8')
+    assert.ok(!profileText.includes('test-mcp-stdio'), 'select 后 profile patch 不应再有 mcp 行')
+    // 2. 白名单应包含它（用执行 select 的 mgr2 实例检查）
+    assert.ok(mgr2.whitelist().some(s => s.name === 'test-mcp-stdio'), 'select 后应进白名单')
+
+    // removeTemplate（取消管理）：应恢复回 profile patch（用同一实例 mgr2）
+    const rm = mgr2.removeTemplate('test-mcp-stdio')
+    assert.equal(rm.ok, true)
+    const profileText2 = readFileSync(join(profile, 'cordis.patch.yml'), 'utf8')
+    assert.ok(profileText2.includes('serverName: test-mcp-stdio'), '取消管理后应恢复回 profile patch')
+    // 3. home patch 不应被污染（位置漂移修复）
+    const homeText = readFileSync(join(home, 'cordis.patch.yml'), 'utf8')
+    assert.ok(!homeText.includes('test-mcp-stdio'), 'home patch 不应被写入（profile 隔离）')
+    // 4. 白名单清空
+    assert.ok(!mgr2.whitelist().some(s => s.name === 'test-mcp-stdio'), '取消管理后白名单应清空')
+  } finally {
+    process.env.DSH_HOME = originalDshHome
+    rmSync(home, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true })
+    rmSync(profile, { recursive: true, force: true })
+  }
+})
+
+test('M7: discover 合并白名单条目——组合无 fiber 时仍可见（不消失）', () => {
+  const root = mkdtempSync(join(testRoot, 'm7b-root-'))
+  // 组合无 fiber + 白名单有 test-mcp-stdio
+  writeFileSync(join(root, '.mcp-whitelist.json'), JSON.stringify({
+    servers: [{ name: 'test-mcp-stdio', transport: 'stdio', command: '__nonexistent_fixture_server__', args: [] }],
+  }))
+  const ctx = { registry: new Map([[Symbol('r'), { fibers: [] }]]), get: () => undefined }
+  const manager = new SessionMcpManager(ctx, root) as unknown as Mgr
+  try {
+    const entries = manager.discover()
+    assert.ok(entries.some(e => e.name === 'test-mcp-stdio'), '白名单条目在组合无 fiber 时也应可见')
+    const entry = entries.find(e => e.name === 'test-mcp-stdio')
+    assert.equal(entry?.managed, true, '应标为已管理')
+    assert.equal(entry?.globallyActive, false, '组合无对应 fiber 时 globallyActive 应为 false')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

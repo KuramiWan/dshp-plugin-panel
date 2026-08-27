@@ -139,23 +139,25 @@ if [ "$WITH_FIXTURES" = "true" ]; then
       printf '    poolRoot: %s\n' "$POOL_DIR"
     fi
   } >> "$PROFILE_DIR/cordis.patch.yml"
-  # 5e. mcp 白名单（test-mcp-stdio 走 MCP 段管理）：若写进 profile patch 会被插件段
-  #     误当 patch 行（启停报"已在 patch 中"）。白名单让面板在 MCP 段以会话连接/断开。
-  #     位置跟随 poolRoot（mcp-manager 读 <poolRoot>/.mcp-whitelist.json）。
+  # 5e. mcp 白名单清理：test-mcp-stdio 的全局形态 = profile patch 行（M7 修复后源码
+  #     支持 select/removeTemplate 处理 profile patch）。不再预置白名单——用户经
+  #     MCP 段「加入管理」（select）时由源码写入。此处清理旧方案（白名单预置）的残留。
   MCP_WHITELIST_ROOT="${POOL_DIR:-$DSH_HOME_TARGET/.skill-pool}"
-  cat > "$MCP_WHITELIST_ROOT/.mcp-whitelist.json" <<'EOF'
-{
-  "servers": [
-    {
-      "name": "test-mcp-stdio",
-      "transport": "stdio",
-      "command": "__nonexistent_fixture_server__",
-      "args": []
-    }
-  ]
-}
-EOF
-  log "fixtures 就位：skill-pool ×4、dshp-test-plugin、test-mcp-stdio（MCP 白名单）"
+  WHITELIST_FILE="$MCP_WHITELIST_ROOT/.mcp-whitelist.json"
+  if [ -f "$WHITELIST_FILE" ]; then
+    # 只移除 test-mcp-stdio 预置条目，保留用户自建条目
+    node -e '
+      const fs = require("fs");
+      const file = process.argv[1];
+      try {
+        const data = JSON.parse(fs.readFileSync(file, "utf8"));
+        const servers = (data.servers ?? []).filter(s => s?.name !== "test-mcp-stdio");
+        fs.writeFileSync(file, JSON.stringify({ ...data, servers }, null, 2));
+        if (servers.length === 0) fs.unlinkSync(file); // 空则删除文件
+      } catch { /* 不存在或损坏：跳过 */ }
+    ' "$WHITELIST_FILE"
+  fi
+  log "fixtures 就位：skill-pool ×4、dshp-test-plugin、test-mcp-stdio（profile patch，MCP 段管理）"
 else
   # dev 环境：干净 patch + 显式 profileDir（避免 resolveProfileDir 猜错回退 web）
   cat > "$PROFILE_DIR/cordis.patch.yml" <<EOF

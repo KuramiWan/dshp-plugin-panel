@@ -115,6 +115,8 @@ export class SessionMcpManager {
   private readonly whitelistFile: string
   /** 已禁用全局 MCP 原始行 sidecar（poolRoot）。 */
   private readonly disabledFile: string
+  /** 活动 profile 目录（可选；select/removeTemplate 同时处理 profile patch 的 mcp 行）。 */
+  private readonly profileDir?: string
   /** agent → (whitelistName → Connection)。 */
   private readonly connections = new WeakMap<Agent, Map<string, Connection>>()
   /** 每个白名单名当前被多少 agent 连接（便于 removeTemplate 检查，WeakMap 不可枚举）。 */
@@ -130,10 +132,11 @@ export class SessionMcpManager {
   /** 缓存白名单（上次读取）；写时同步磁盘。 */
   private cached: McpServerTemplate[]
 
-  constructor(ctx: Context, root: string) {
+  constructor(ctx: Context, root: string, profileDir?: string) {
     this.context = ctx
     this.whitelistFile = join(root, WHITELIST_FILE)
     this.disabledFile = join(root, DISABLED_FILE)
+    this.profileDir = profileDir
     this.cached = this.readFile()
   }
 
@@ -209,19 +212,27 @@ export class SessionMcpManager {
         actives.add(fiber.config.serverName)
       }
     }
-    return this.discoveredTemplates()
+    const discovered = this.discoveredTemplates()
       .filter(t => !this.ownedServerNames.has(t.name))
-      .map(t => ({
-        name: t.name,
-        transport: t.transport,
-        ...(t.command === undefined ? {} : { command: t.command }),
-        ...(t.args === undefined ? {} : { args: [...t.args] }),
-        ...(t.url === undefined ? {} : { url: t.url }),
-        hasSecrets: (t.env !== undefined && Object.keys(t.env).length > 0)
-          || (t.headers !== undefined && Object.keys(t.headers).length > 0),
-        globallyActive: actives.has(t.name),
-        managed: managed.has(t.name),
-      }))
+    const seen = new Set(discovered.map(t => t.name))
+    // M7 修复：白名单里存在、但组合里没有对应 fiber 的条目（如 profile patch 被
+    // select 移除后、或 setup 直写白名单）也列出——否则取消管理后条目完全消失、
+    // 且 discover/select 循环断裂（看不到就无法重新管理）。组合无对应时 globallyActive=false。
+    for (const template of this.cached) {
+      if (seen.has(template.name)) continue
+      discovered.push(template)
+    }
+    return discovered.map(t => ({
+      name: t.name,
+      transport: t.transport,
+      ...(t.command === undefined ? {} : { command: t.command }),
+      ...(t.args === undefined ? {} : { args: [...t.args] }),
+      ...(t.url === undefined ? {} : { url: t.url }),
+      hasSecrets: (t.env !== undefined && Object.keys(t.env).length > 0)
+        || (t.headers !== undefined && Object.keys(t.headers).length > 0),
+      globallyActive: actives.has(t.name),
+      managed: managed.has(t.name),
+    }))
   }
 
   /**
@@ -229,7 +240,10 @@ export class SessionMcpManager {
    * secrets，不向客户端回显）。返回其脱敏视图供刷新。
    */
   select(name: string): { ok: true; entry: McpDiscoveredView } | { ok: false; reason: string } {
+    // M7 修复：优先组合里的模板；组合无对应时（如 select 已把行从 patch 移除、或 setup
+    // 直写白名单）从白名单取——否则"组合无 fiber → select 失败 → 无法重新管理"循环断裂。
     const template = this.discoveredTemplates().find(t => t.name === name)
+      ?? this.cached.find(t => t.name === name)
     if (template === undefined) return { ok: false, reason: `组合中未发现已配置的 MCP "${name}"` }
     // 先禁用全局（移到会话级），再入白名单；白名单失败则回滚恢复全局。
     const disabled = this.disableGlobalMcp(name)
@@ -324,9 +338,15 @@ export class SessionMcpManager {
     return join(defaultDshHome(), 'cordis.patch.yml')
   }
 
-  /** 读 home 级 patch 为顶层选项数组（非法/空 → 空数组）。 */
-  private readHomePatchOptions(): HomePatchOption[] {
-    const file = this.homePatchFile()
+  /** 候选 patch 文件：home 级（跨 profile 共享）+ 当前 profile（隔离层，可选）。 */
+  private patchFiles(): string[] {
+    const files = [this.homePatchFile()]
+    if (this.profileDir !== undefined) files.push(join(this.profileDir, 'cordis.patch.yml'))
+    return files
+  }
+
+  /** 读指定 patch 文件为顶层选项数组（非法/空 → 空数组）。 */
+  private readPatchOptionsFrom(file: string): HomePatchOption[] {
     if (!existsSync(file)) return []
     const text = readTextFileSync(file)
     if (text === undefined) return []
@@ -339,28 +359,37 @@ export class SessionMcpManager {
     }
   }
 
-  /** 写回 home 级 patch：备份 + 解析校验 + 原子写。 */
-  private writeHomePatchOptions(options: HomePatchOption[]): { ok: true } | { ok: false; reason: string } {
-    const file = this.homePatchFile()
+  /** 写回指定 patch 文件：备份 + 解析校验 + 原子写。 */
+  private writePatchOptionsTo(file: string, options: HomePatchOption[]): { ok: true } | { ok: false; reason: string } {
     let nextText: string
     try {
       nextText = stringifyYaml(options, { noRefs: true, lineWidth: 120 })
     } catch (error) {
-      return { ok: false, reason: `serialize home patch failed: ${error instanceof Error ? error.message : String(error)}` }
+      return { ok: false, reason: `serialize patch failed: ${error instanceof Error ? error.message : String(error)}` }
     }
     try {
       const reparsed = parseYaml(nextText)
-      if (!Array.isArray(reparsed)) return { ok: false, reason: 'generated home patch is not a top-level array' }
+      if (!Array.isArray(reparsed)) return { ok: false, reason: 'generated patch is not a top-level array' }
     } catch (error) {
-      return { ok: false, reason: `generated home patch failed to parse: ${error instanceof Error ? error.message : String(error)}` }
+      return { ok: false, reason: `generated patch failed to parse: ${error instanceof Error ? error.message : String(error)}` }
     }
     try {
       if (existsSync(file)) writeFileSync(file + '.bak', readTextFileSync(file) ?? '', 'utf8')
       atomicWriteFileSync(file, nextText)
     } catch (error) {
-      return { ok: false, reason: `write home patch failed: ${error instanceof Error ? error.message : String(error)}` }
+      return { ok: false, reason: `write patch failed: ${error instanceof Error ? error.message : String(error)}` }
     }
     return { ok: true }
+  }
+
+  /** 读 home 级 patch 为顶层选项数组（非法/空 → 空数组）。 */
+  private readHomePatchOptions(): HomePatchOption[] {
+    return this.readPatchOptionsFrom(this.homePatchFile())
+  }
+
+  /** 写回 home 级 patch：备份 + 解析校验 + 原子写。 */
+  private writeHomePatchOptions(options: HomePatchOption[]): { ok: true } | { ok: false; reason: string } {
+    return this.writePatchOptionsTo(this.homePatchFile(), options)
   }
 
   /**
@@ -399,60 +428,77 @@ export class SessionMcpManager {
     }
   }
 
-  /** 禁用全局 MCP：从 home 级 patch 移除该 serverName 的全部行，原始行存 sidecar。 */
+  /**
+   * 禁用全局 MCP：从候选 patch（home + 当前 profile）移除该 serverName 的全部行，
+   * 原始行存 sidecar（含来源文件，供恢复回原位）。
+   */
   private disableGlobalMcp(serverName: string): { ok: true } | { ok: false; reason: string } {
-    const options = this.readHomePatchOptions()
-    // M6 修复：收集所有匹配行（可能有同名多行），恢复时全部还原，避免只存最后一行导致其它行丢失。
-    const removed: HomePatchRow[] = []
-    const next: HomePatchOption[] = options.map(opt => {
-      if (opt === null || typeof opt !== 'object' || !Array.isArray(opt.insert)) return opt
-      const insert = opt.insert.filter(row => {
-        const cfg = (row as { config?: unknown })?.config as { serverName?: unknown } | undefined
-        const isTarget = typeof cfg?.serverName === 'string' && cfg.serverName === serverName
-        if (isTarget) removed.push(row)
-        return !isTarget
+    const removed: { file: string; row: HomePatchRow }[] = []
+    // 逐个 patch 文件处理：收集匹配行 + 从该文件移除。
+    for (const file of this.patchFiles()) {
+      const options = this.readPatchOptionsFrom(file)
+      const next: HomePatchOption[] = options.map(opt => {
+        if (opt === null || typeof opt !== 'object' || !Array.isArray(opt.insert)) return opt
+        const insert = opt.insert.filter(row => {
+          const cfg = (row as { config?: unknown })?.config as { serverName?: unknown } | undefined
+          const isTarget = typeof cfg?.serverName === 'string' && cfg.serverName === serverName
+          if (isTarget) removed.push({ file, row })
+          return !isTarget
+        })
+        return { ...opt, insert }
       })
-      return { ...opt, insert }
-    })
+      if (removed.some(r => r.file === file)) {
+        const result = this.writePatchOptionsTo(file, next)
+        if (!result.ok) return { ok: false, reason: result.reason }
+      }
+    }
     if (removed.length === 0) return { ok: true } // 无全局行，no-op
-    const result = this.writeHomePatchOptions(next)
-    if (!result.ok) return { ok: false, reason: result.reason }
     const disabled = this.readDisabledRows()
-    disabled[serverName] = removed
+    disabled[serverName] = removed.map(r => ({ ...r.row, __sourceFile: r.file }))
     this.writeDisabledRows(disabled)
     return { ok: true }
   }
 
-  /** 恢复全局 MCP：从 sidecar 取全部原始行，加回 home 级 patch。 */
+  /** 恢复全局 MCP：从 sidecar 取全部原始行，按来源文件加回（默认 home 级 patch）。 */
   private restoreGlobalMcp(serverName: string): { ok: true } | { ok: false; reason: string } {
     const disabled = this.readDisabledRows()
     const rows = disabled[serverName]
     if (rows === undefined || rows.length === 0) return { ok: true } // 无 sidecar 记录，no-op
-    const options = this.readHomePatchOptions()
-    // M5 修复：'已存在'须扫所有 insert 块；M6 修复：对每行各自判断，缺失的才补回。
-    const existsInAnyBlock = (row: HomePatchRow): boolean => {
-      const cfg = (row as { config?: unknown })?.config as { serverName?: unknown } | undefined
-      const rowServer = typeof cfg?.serverName === 'string' ? cfg.serverName : undefined
-      return options.some(opt => {
-        if (opt === null || typeof opt !== 'object' || !Array.isArray(opt.insert)) return false
-        return opt.insert.some(r => {
-          const rcfg = (r as { config?: unknown })?.config as { serverName?: unknown } | undefined
-          return typeof rcfg?.serverName === 'string' && rowServer !== undefined && rcfg.serverName === rowServer
-        })
-      })
+    // 按来源文件分组（sidecar 记录 __sourceFile；旧记录无则归 home patch）。
+    const byFile = new Map<string, HomePatchRow[]>()
+    for (const row of rows) {
+      const src = (row as { __sourceFile?: string }).__sourceFile ?? this.homePatchFile()
+      const list = byFile.get(src) ?? []
+      list.push(row)
+      byFile.set(src, list)
     }
-    // 逐行判断：已存在（同名）则跳过，缺失的收集待追加。
-    const toAdd = rows.filter(r => !existsInAnyBlock(r))
-    if (toAdd.length > 0) {
-      let insertOpt = options.find(opt => opt !== null && typeof opt === 'object' && Array.isArray(opt.insert))
-      if (insertOpt === undefined) {
-        insertOpt = { insert: [] }
-        options.push(insertOpt)
+    for (const [file, fileRows] of byFile) {
+      const options = this.readPatchOptionsFrom(file)
+      // M5 修复：'已存在'须扫所有 insert 块；M6 修复：对每行各自判断，缺失的才补回。
+      const existsInAnyBlock = (row: HomePatchRow): boolean => {
+        const cfg = (row as { config?: unknown })?.config as { serverName?: unknown } | undefined
+        const rowServer = typeof cfg?.serverName === 'string' ? cfg.serverName : undefined
+        return options.some(opt => {
+          if (opt === null || typeof opt !== 'object' || !Array.isArray(opt.insert)) return false
+          return opt.insert.some(r => {
+            const rcfg = (r as { config?: unknown })?.config as { serverName?: unknown } | undefined
+            return typeof rcfg?.serverName === 'string' && rowServer !== undefined && rcfg.serverName === rowServer
+          })
+        })
       }
-      const insert = insertOpt.insert as HomePatchRow[]
-      insert.push(...toAdd)
-      const result = this.writeHomePatchOptions(options)
-      if (!result.ok) return { ok: false, reason: result.reason }
+      // 逐行判断：已存在（同名）则跳过，缺失的收集待追加。
+      const toAdd = fileRows.filter(r => !existsInAnyBlock(r))
+      if (toAdd.length > 0) {
+        let insertOpt = options.find(opt => opt !== null && typeof opt === 'object' && Array.isArray(opt.insert))
+        if (insertOpt === undefined) {
+          insertOpt = { insert: [] }
+          options.push(insertOpt)
+        }
+        const insert = insertOpt.insert as HomePatchRow[]
+        insert.push(...toAdd)
+        const result = this.writePatchOptionsTo(file, options)
+        if (!result.ok) return { ok: false, reason: result.reason }
+      }
     }
     delete disabled[serverName]
     this.writeDisabledRows(disabled)

@@ -104,7 +104,7 @@ export class SkillControlPlugin {
   private init(ctx: Context, config: SkillControlConfig): void {
     const poolRoot = resolvePoolRoot(config.poolRoot)
     this.store = new SessionSkillStore(poolRoot, ctx.logger('store'))
-    this.mcp = new SessionMcpManager(ctx, poolRoot)
+    this.mcp = new SessionMcpManager(ctx, poolRoot, config.profileDir)
     this.plugins = new PluginManager(ctx, this.mcp, config.profileDir)
     applySessionSkillTools(ctx, { poolRoot, store: this.store })
     applySessionSkillCommands(ctx, { poolRoot, store: this.store })
