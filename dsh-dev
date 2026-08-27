@@ -64,6 +64,25 @@ EOF
   echo "已补全开发 profile $ENV_NAME 的凭证/设置共享（指向生产 ~/.dsh）"
 fi
 
+# ---- 2.6 自动补全 web-app bundle（幂等） ----
+# dsh plugin add 只加 dsh-base + 面板；缺 @deepseek-ai/dsh-web-app（提供
+# webServer HTTP 服务）会导致面板 initialized 后无 web 层、进程挂起。
+# web-app 是内核自带（全局安装），无需 pnpm 装，直接写进 bundles 即可。
+PKG_FILE="$DEV_HOME/profiles/$ENV_NAME/package.json"
+if ! grep -q 'dsh-web-app' "$PKG_FILE" 2>/dev/null; then
+  node -e '
+    const fs = require("fs");
+    const file = process.argv[1];
+    const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+    const bundles = pkg.dsh?.profile?.bundles ?? [];
+    if (!bundles.includes("@deepseek-ai/dsh-web-app")) {
+      bundles.splice(1, 0, "@deepseek-ai/dsh-web-app");
+      fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
+      process.stdout.write("已补全 web-app bundle（webServer 服务）\n");
+    }
+  ' "$PKG_FILE"
+fi
+
 # ---- 3. 启动（开发根，生产 ~/.dsh 只读） ----
 export DSH_HOME="$DEV_HOME"
 # 用户显式 --profile 优先，否则用本脚本对应 profile
