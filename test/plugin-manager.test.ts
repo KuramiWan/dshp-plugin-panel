@@ -597,3 +597,40 @@ test('M8: 停用 fixtures 预置的 patch 行后应保留为已停用（不消�
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('M9: 停用插件不应删除同 patch 里的 mcp 桥接行（writePatch 重建要保留 mcp 行）', async () => {
+  // 用户复现场景：fixtures 的 profile patch 含 dshp-test-plugin + test-mcp-stdio 两行。
+  // 停用 dshp-test-plugin（M8 路径）后，test-mcp-stdio 桥接行被 writePatch 整体重建
+  // 静默删掉 → 面板 MCP 段只剩 plugin、mcp 消失（用户报告「没有看到测试 mcp」）。
+  const { root } = makeManager()
+  try {
+    writeFileSync(patchFile(root), [
+      '- insert:',
+      '    - id: dshp-test-plugin',
+      '      name: dshp-test-plugin',
+      '    - id: test-mcp-stdio',
+      '      name: "@deepseek-ai/dsh-mcp-client"',
+      '      config:',
+      '        serverName: test-mcp-stdio',
+      '        transport: stdio',
+      '        command: __nonexistent_fixture_server__',
+      '        args: []',
+      '',
+    ].join('\n'), 'utf8')
+    // fiber 在 registry（active），disable 才走 patch 分支
+    const ctxActive = {
+      registry: new Map([['plugin', { fibers: [{ name: 'dshp-test-plugin', state: 2, config: { pkg: 'dshp-test-plugin' } }] }]]),
+    } as unknown as import('@deepseek-ai/cordis').Context
+    const managerActive = new PluginManager(ctxActive, makeMcpStub(), root)
+    const dis = await managerActive.disable('dshp-test-plugin')
+    assert.equal(dis.ok, true)
+
+    // mcp 桥接行必须保留（MCP 段继续管理它；面板插件段不碰它，M3 语义）
+    const patchText = readFileSync(patchFile(root), 'utf8')
+    assert.ok(patchText.includes('test-mcp-stdio'), '停用插件后 mcp 桥接行应保留')
+    assert.ok(patchText.includes('__nonexistent_fixture_server__'), 'mcp 桥接行的 config 应原样保留')
+    assert.ok(!patchText.includes('dshp-test-plugin'), '被停用的插件行应移除')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

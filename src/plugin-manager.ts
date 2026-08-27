@@ -385,18 +385,24 @@ export class PluginManager {
    * 字符串 id 的行，而 YAML 允许 id 为数字等非字符串值。若整体重建丢这些行，
    * 任意一次启停/安装都会静默删掉用户手工配置。故这里保留既有所有非字符串 id
    * 的行，仅用传入的 rows（面板管理行）重建字符串 id 部分。
+   *
+   * M9 修复：mcp 桥接行（config 有 serverName/transport 特征）同样是面板插件段
+   * 不管理的行——readPatchRows 跳过它们（M3），writePatch 重建时也必须原样保留，
+   * 否则任意一次启停/安装都会把同 patch 里的 mcp 桥接行静默删掉（用户实测：
+   * 停用插件后 MCP 段只剩 plugin、mcp 消失）。
    */
   private writePatch(rows: PatchRow[]): { ok: true } | { ok: false; reason: string } {
     const options = this.readPatchOptions()
-    // 从所有既有 insert 块收集「非面板管理」的行（id 非字符串）与其它 patch 选项。
-    // 面板管理的行（字符串 id）由传入 rows 整体决定；非字符串 id 行必须原样保留。
+    // 从所有既有 insert 块收集「非面板管理」的行（id 非字符串 或 mcp 桥接行）
+    // 与其它 patch 选项。面板管理的行（字符串 id 非 mcp）由传入 rows 整体决定。
     const preservedNonManaged: PatchRow[] = []
     const kept: PatchOption[] = []
     for (const opt of options) {
       if (opt !== null && typeof opt === 'object' && Array.isArray(opt.insert)) {
         for (const row of opt.insert) {
-          if (row !== null && typeof row === 'object' && typeof row.id !== 'string') {
-            preservedNonManaged.push(row)
+          if (row !== null && typeof row === 'object') {
+            const isManaged = typeof row.id === 'string' && !isMcpClientConfig((row as { config?: unknown }).config)
+            if (!isManaged) preservedNonManaged.push(row)
           }
         }
         continue
