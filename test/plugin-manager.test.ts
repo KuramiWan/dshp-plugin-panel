@@ -301,3 +301,48 @@ test('M3: patch 里的 mcp 桥接行不应被当 patch 行管理（启停报"已
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('M8: 停用 fixtures 预置的 patch 行后应保留为已停用（不消失，可重新启用）', async () => {
+  // fixtures 场景：dshp-test-plugin 是 profile patch 预置行（从未经 install 进过 specs）。
+  // 停用后应保留在状态文件（list 的 specs 视图显示为已停用），否则热重载移除 fiber 后
+  // 完全消失、无法重新启用。
+  const { root, manager } = makeManager()
+  try {
+    writeFileSync(patchFile(root), [
+      '- insert:',
+      '    - id: dshp-test-plugin',
+      '      name: dshp-test-plugin',
+      '',
+    ].join('\n'), 'utf8')
+    // 先让 fiber 在 registry（active），disable 才走 patch 分支
+    const ctxActive = {
+      registry: new Map([['plugin', { fibers: [{ name: 'dshp-test-plugin', state: 2, config: { pkg: 'dshp-test-plugin' } }] }]]),
+    } as unknown as import('@deepseek-ai/cordis').Context
+    const managerActive = new PluginManager(
+      ctxActive,
+      makeMcpStub(),
+      root,
+    )
+    const dis = await managerActive.disable('dshp-test-plugin')
+    assert.equal(dis.ok, true)
+
+    // 1. 状态文件应保留该行规格（供重新启用）
+    const specs = JSON.parse(readFileSync(join(root, '.dshp-plugins.json'), 'utf8')).plugins as Array<{ id: string; source: string }>
+    assert.ok(specs.some(s => s.id === 'dshp-test-plugin'), '停用后应保留规格')
+    assert.equal(specs.find(s => s.id === 'dshp-test-plugin')?.source, 'patch')
+
+    // 2. fiber 移除（热重载后）list() 仍显示为已停用
+    const managerAfter = new PluginManager(makeCtx({}, []), makeMcpStub(), root)
+    const view = managerAfter.list().find(v => v.id === 'dshp-test-plugin')
+    assert.ok(view !== undefined, '停用后不应消失')
+    assert.equal(view?.active, false, '应显示为已停用')
+    assert.equal(view?.manageable, true, '应可重新启用')
+
+    // 3. 重新启用：patch 行恢复
+    const en = await managerAfter.enable('dshp-test-plugin')
+    assert.equal(en.ok, true)
+    assert.ok(readFileSync(patchFile(root), 'utf8').includes('dshp-test-plugin'), '启用后 patch 行应恢复')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

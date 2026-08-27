@@ -441,7 +441,20 @@ export class PluginManager {
     }
     if (view.source !== 'patch') return { ok: false, reason: `"${id}" 不是活动 profile 的 patch 行，不可在此停用` }
 
-    const rows = this.readPatchRows().filter(r => String(r.id) !== id)
+    // M8 修复：先记录被停用行的规格，再从 patch 移除。fixtures 预置的 patch 行
+    // 从未进过 specs（install 才写 specs），若先移除再 syncSpecs，readPatchRows 已
+    // 读不到它 → specs 为空 → list() 的 specs 视图不显示 → 停用后完全消失。
+    // 先记录保证停用后可重新启用（list 的 specs 视图显示为已停用）。
+    const preRows = this.readPatchRows()
+    const preRow = preRows.find(r => String(r.id) === id)
+    if (preRow !== undefined && typeof preRow.name === 'string' && preRow.name !== '') {
+      const specs = this.readSpecs()
+      if (!specs.some(s => s.id === id)) {
+        specs.push({ id, name: preRow.name, source: 'patch' })
+        this.persistSpecs(specs)
+      }
+    }
+    const rows = preRows.filter(r => String(r.id) !== id)
     const result = this.writePatch(rows)
     if (!result.ok) return { ok: false, reason: result.reason }
     // M2 修复：patch 行也可能同时挂在 dsh.profile.bundles（如 reconcile 自动加回的双挂载）。
