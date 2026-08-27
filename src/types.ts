@@ -243,7 +243,7 @@ export interface SkillPanelPluginEntry {
   readonly manageable: boolean
   readonly isSelf: boolean
   readonly packageName?: string
-  /** 已提升为热插拔、但尚未重启（bundle 层仍冻结在运行树里，重启后生效）。 */
+  /** 已迁移挂载方式、但尚未重启（promote：bundle 已摘、待重启写 patch 行；demote：patch 已摘、bundle 已加回待重启）。 */
   readonly pendingRestart?: boolean
   /** mcp 桥接行信息。 */
   readonly mcp?: {
@@ -288,6 +288,15 @@ export interface SkillPanelPluginPromoteRequest {
 }
 
 export type SkillPanelPluginPromoteResult =
+  | { readonly ok: true; readonly id: string; readonly restartRequired: true }
+  | { readonly ok: false; readonly reason: string }
+
+export interface SkillPanelPluginDemoteRequest {
+  readonly sessionId: string
+  readonly id: string
+}
+
+export type SkillPanelPluginDemoteResult =
   | { readonly ok: true; readonly id: string; readonly restartRequired: true }
   | { readonly ok: false; readonly reason: string }
 

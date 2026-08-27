@@ -302,6 +302,257 @@ test('M3: patch 里的 mcp 桥接行不应被当 patch 行管理（启停报"已
   }
 })
 
+test('D1: demoteToBundle 把 patch 行改回 bundle（移 patch 行 + 加回 bundles + 恢复声明 + 标需重启）', () => {
+  // 场景：一个 bundle 包被 promote 过（声明已删、.bak 留有 dsh.bundle），
+  // 之后 enable 写回了 patch 行 → 现在 demote 改回冷挂载。
+  const root = mkdtempSync(join(testRoot, 'profile-'))
+  // patch 行（enable 后写入）
+  writeFileSync(join(root, 'cordis.patch.yml'), [
+    '- insert:',
+    '    - id: my-plugin',
+    '      name: "@user/my-plugin"',
+    '',
+  ].join('\n'), 'utf8')
+  // bundles 不含该包（promote 已移除）
+  writeFileSync(join(root, 'package.json'), JSON.stringify({
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base'] } },
+  }))
+  // 包 manifest：无 dsh.bundle（promote 已删），.bak 保留原始声明
+  const pkgDir = join(root, 'node_modules', '@user', 'my-plugin')
+  mkdirSync(pkgDir, { recursive: true })
+  writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({
+    name: '@user/my-plugin', version: '1.0.0',
+  }))
+  writeFileSync(join(pkgDir, 'package.json.bak'), JSON.stringify({
+    name: '@user/my-plugin', version: '1.0.0',
+    dsh: { bundle: { patch: './cordis.patch.yml' } },
+  }))
+  // .bak 声明的 patch 路径要真实存在（DSH 重启按它加载）
+  writeFileSync(join(pkgDir, 'cordis.patch.yml'), [
+    '- insert:',
+    '    - id: my-plugin',
+    '      name: "@user/my-plugin"',
+    '',
+  ].join('\n'), 'utf8')
+  const manager = new PluginManager(
+    makeCtx({}, [{ name: 'my-plugin', config: { pkg: '@user/my-plugin' }, state: 2 }]),
+    makeMcpStub(),
+    root,
+  )
+  try {
+    const res = manager.demoteToBundle('my-plugin')
+    assert.equal(res.ok, true)
+    assert.equal((res as { restartRequired: boolean }).restartRequired, true, '改冷挂载需重启生效')
+
+    // 1. patch 行已移除
+    const patchText = readFileSync(patchFile(root), 'utf8')
+    assert.ok(!patchText.includes('my-plugin'), 'patch 行应被移除')
+
+    // 2. bundles 加回（其它 bundle 不受影响）
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    assert.ok(pkg.dsh.profile.bundles.includes('@user/my-plugin'), 'bundle 应加回')
+    assert.ok(pkg.dsh.profile.bundles.includes('@deepseek-ai/dsh-base'), '其它 bundle 不受影响')
+
+    // 3. dsh.bundle 声明恢复（从 .bak 还原；否则 reconcile 会把它移出 bundles）
+    const manifest = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
+    assert.deepEqual(manifest.dsh.bundle, { patch: './cordis.patch.yml' }, 'dsh.bundle 声明应恢复')
+
+    // 4. 状态文件标记为 bundle + 待重启（pendingDemote）
+    const specs = JSON.parse(readFileSync(join(root, '.dshp-plugins.json'), 'utf8')).plugins as Array<{
+      id: string; source: string; pendingDemote?: boolean
+    }>
+    const spec = specs.find(s => s.id === 'my-plugin')
+    assert.equal(spec?.source, 'bundle')
+    assert.equal(spec?.pendingDemote, true, '应标记待重启')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('D2: demote 后 pendingDemote 中间态——重启前视图标注需重启；重启后（bundle 生效）正常显示为 bundle', () => {
+  const root = mkdtempSync(join(testRoot, 'profile-'))
+  writeFileSync(join(root, 'cordis.patch.yml'), [
+    '- insert:',
+    '    - id: my-plugin',
+    '      name: "@user/my-plugin"',
+    '',
+  ].join('\n'), 'utf8')
+  writeFileSync(join(root, 'package.json'), JSON.stringify({
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base'] } },
+  }))
+  // 包 manifest（promote 已删 dsh.bundle，无 .bak），包内有一个真实 patch 文件
+  const pkgDir = join(root, 'node_modules', '@user', 'my-plugin')
+  mkdirSync(pkgDir, { recursive: true })
+  writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({
+    name: '@user/my-plugin', version: '1.0.0',
+  }))
+  writeFileSync(join(pkgDir, 'cordis.patch.yml'), [
+    '- insert:',
+    '    - id: my-plugin',
+    '      name: "@user/my-plugin"',
+    '',
+  ].join('\n'), 'utf8')
+  const manager = new PluginManager(
+    makeCtx({}, [{ name: 'my-plugin', config: { pkg: '@user/my-plugin' }, state: 2 }]),
+    makeMcpStub(),
+    root,
+  )
+  try {
+    assert.equal(manager.demoteToBundle('my-plugin').ok, true)
+
+    // 1. 重启前（pendingDemote）：patch 行移除后 fiber 热卸载（不在 registry），
+    //    行从 specs 视图出现，标注「需重启」（bundle 尚未冷挂载生效）。
+    const managerMid = new PluginManager(makeCtx({}, []), makeMcpStub(), root)
+    const pre = managerMid.list().find(v => v.id === 'my-plugin')
+    assert.ok(pre !== undefined, '重启前行不应消失')
+    assert.equal(pre?.source, 'bundle')
+    assert.equal(pre?.active, false)
+    assert.equal(pre?.pendingRestart, true, 'pendingDemote 应映射为 pendingRestart 红标')
+
+    // 2. 重启后（bundle 生效）：fiber 以 bundle 源回归 registry，无红标（settle 已清理）
+    const managerAfter = new PluginManager(
+      makeCtx({}, [{ name: 'my-plugin', config: { pkg: '@user/my-plugin' }, state: 2 }]),
+      makeMcpStub(),
+      root,
+    )
+    const post = managerAfter.list().find(v => v.id === 'my-plugin')
+    assert.equal(post?.source, 'bundle')
+    assert.equal(post?.pendingRestart, undefined, '重启后不再标需重启')
+    // spec 的 pendingDemote 标记已被清理
+    const specsAfter = JSON.parse(readFileSync(join(root, '.dshp-plugins.json'), 'utf8')).plugins as Array<{
+      id: string; pendingDemote?: boolean
+    }>
+    assert.equal(specsAfter.find(s => s.id === 'my-plugin')?.pendingDemote, undefined, '重启后应清理 pendingDemote')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('D3: demote 只接受 patch 行——core / bundle / mcp / 面板自身拒绝', () => {
+  // core 行：registry 有 fiber，无 patch 行、无 bundle、无 spec
+  const root = mkdtempSync(join(testRoot, 'profile-'))
+  writeFileSync(join(root, 'package.json'), JSON.stringify({
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base'] } },
+  }))
+  const manager = new PluginManager(
+    makeCtx({}, [
+      { name: 'core-plugin', config: { pkg: '@deepseek-ai/dsh-base' }, state: 2 },
+      { name: 'bundle-plugin', config: { pkg: '@user/bundle-plugin' }, state: 2 },
+      { name: PANEL_ROW_ID, config: { pkg: PANEL_PACKAGE }, state: 2 },
+    ]),
+    makeMcpStub(),
+    root,
+  )
+  try {
+    // bundle 行（在 bundles 里）
+    writeFileSync(join(root, 'package.json'), JSON.stringify({
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@user/bundle-plugin'] } },
+    }))
+    const resBundle = manager.demoteToBundle('bundle-plugin')
+    assert.equal(resBundle.ok, false)
+    assert.match((resBundle as { reason: string }).reason, /不是 patch 行/)
+    // core 行（无 patch 行、无 bundles）
+    const resCore = manager.demoteToBundle('core-plugin')
+    assert.equal(resCore.ok, false)
+    assert.match((resCore as { reason: string }).reason, /不是 patch 行/)
+    // 面板自身（patch 行 + self）
+    writeFileSync(patchFile(root), [
+      '- insert:',
+      `    - id: ${PANEL_ROW_ID}`,
+      `      name: ${PANEL_PACKAGE}`,
+      '',
+    ].join('\n'), 'utf8')
+    const resSelf = manager.demoteToBundle(PANEL_ROW_ID)
+    assert.equal(resSelf.ok, false)
+    assert.match((resSelf as { reason: string }).reason, /面板自身/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('D4: 包无 dsh.bundle 声明、无 .bak、无 patch 文件 → demote 拒绝（DSH 无法作为 bundle 层加载）', () => {
+  const root = mkdtempSync(join(testRoot, 'profile-'))
+  writeFileSync(join(root, 'cordis.patch.yml'), [
+    '- insert:',
+    '    - id: my-plugin',
+    '      name: "@user/my-plugin"',
+    '',
+  ].join('\n'), 'utf8')
+  writeFileSync(join(root, 'package.json'), JSON.stringify({
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base'] } },
+  }))
+  // 包 manifest 无声明、无 .bak、包内无任何 patch 文件（纯 JS 插件，未声明 bundle）
+  const pkgDir = join(root, 'node_modules', '@user', 'my-plugin')
+  mkdirSync(pkgDir, { recursive: true })
+  writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({
+    name: '@user/my-plugin', version: '1.0.0',
+  }))
+  writeFileSync(join(pkgDir, 'index.js'), 'export default {};\n', 'utf8')
+  const manager = new PluginManager(
+    makeCtx({}, [{ name: 'my-plugin', config: { pkg: '@user/my-plugin' }, state: 2 }]),
+    makeMcpStub(),
+    root,
+  )
+  try {
+    const res = manager.demoteToBundle('my-plugin')
+    assert.equal(res.ok, false)
+    assert.match((res as { reason: string }).reason, /无法作为 bundle 层/)
+    // 拒绝后不应有残留：patch 行保留、bundles 未加回、无 spec 标记
+    assert.ok(readFileSync(patchFile(root), 'utf8').includes('my-plugin'), '拒绝后 patch 行应保留')
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    assert.ok(!pkg.dsh.profile.bundles.includes('@user/my-plugin'), '拒绝后 bundles 不应加回')
+    const stateFile = join(root, '.dshp-plugins.json')
+    if (existsSync(stateFile)) {
+      const specs = JSON.parse(readFileSync(stateFile, 'utf8')).plugins as Array<{ id: string }>
+      assert.ok(!specs.some(s => s.id === 'my-plugin'), '拒绝后不应写 spec')
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('D5: demote 后 fiber 卸载、bundle 未重启的中间态——specs 视图显示为「需重启」的 bundle 行', () => {
+  const root = mkdtempSync(join(testRoot, 'profile-'))
+  writeFileSync(join(root, 'cordis.patch.yml'), [
+    '- insert:',
+    '    - id: my-plugin',
+    '      name: "@user/my-plugin"',
+    '',
+  ].join('\n'), 'utf8')
+  writeFileSync(join(root, 'package.json'), JSON.stringify({
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base'] } },
+  }))
+  const pkgDir = join(root, 'node_modules', '@user', 'my-plugin')
+  mkdirSync(pkgDir, { recursive: true })
+  writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({
+    name: '@user/my-plugin', version: '1.0.0',
+  }))
+  writeFileSync(join(pkgDir, 'cordis.patch.yml'), [
+    '- insert:',
+    '    - id: my-plugin',
+    '      name: "@user/my-plugin"',
+    '',
+  ].join('\n'), 'utf8')
+  const manager = new PluginManager(
+    makeCtx({}, [{ name: 'my-plugin', config: { pkg: '@user/my-plugin' }, state: 2 }]),
+    makeMcpStub(),
+    root,
+  )
+  try {
+    assert.equal(manager.demoteToBundle('my-plugin').ok, true)
+    // fiber 已卸载（热重载生效）但未重启：行从 specs 视图出现，带「需重启」红标
+    const managerAfter = new PluginManager(makeCtx({}, []), makeMcpStub(), root)
+    const view = managerAfter.list().find(v => v.id === 'my-plugin')
+    assert.ok(view !== undefined, '中间态行不应消失')
+    assert.equal(view?.source, 'bundle')
+    assert.equal(view?.active, false)
+    assert.equal(view?.pendingRestart, true, 'bundle 生效前行应标「需重启」')
+    assert.equal(view?.manageable, true, '中间态行应可管理（可停用/启用 bundle）')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('M8: 停用 fixtures 预置的 patch 行后应保留为已停用（不消失，可重新启用）', async () => {
   // fixtures 场景：dshp-test-plugin 是 profile patch 预置行（从未经 install 进过 specs）。
   // 停用后应保留在状态文件（list 的 specs 视图显示为已停用），否则热重载移除 fiber 后

@@ -57,7 +57,7 @@ export interface PluginFiberView {
   manageable: boolean
   /** 是否面板自身行。 */
   isSelf: boolean
-  /** 已提升为热插拔、但尚未重启（bundle 层仍冻结在运行树里，重启后生效）。 */
+  /** 已迁移挂载方式、但尚未重启（promote：bundle 已摘、待重启写 patch 行；demote：patch 已摘、bundle 已加回待重启）。 */
   pendingRestart?: boolean
   /** 行包名（patch 行有；mcp 行为 mcp-client 包；core 行可能缺）。 */
   packageName?: string
@@ -73,6 +73,8 @@ export interface UserPluginSpec {
   source?: 'patch' | 'bundle'
   /** 提升待完成：bundle 已从 dsh.profile.bundles 移除，待重启后启用（写 patch 行）。 */
   pendingPromote?: boolean
+  /** 降级待完成：patch 行已移除、bundle 已加回，待重启后生效（冷挂载，重启后自动清理）。 */
+  pendingDemote?: boolean
 }
 
 /** patch 行（cordis.patch.yml `- insert:` 下的条目）。 */
@@ -97,6 +99,10 @@ export type PluginInstallResult =
   | { ok: false; reason: string }
 
 export type PluginPromoteResult =
+  | { ok: true; id: string; restartRequired: true }
+  | { ok: false; reason: string }
+
+export type PluginDemoteResult =
   | { ok: true; id: string; restartRequired: true }
   | { ok: false; reason: string }
 
@@ -182,6 +188,9 @@ export class PluginManager {
    * @param agent - 可选；用于标注 mcp 桥接行的会话级连接状态。
    */
   list(agent?: Agent): PluginFiberView[] {
+    // 重启后收尾：pendingDemote 的规格若已降级生效（fiber 以 bundle 源回归 registry），
+    // 先清理标记，让本次视图不再标红（幂等，仅变更时落盘）。
+    this.settlePendingDemote()
     const patchRows = this.readPatchRows()
     const patchIds = new Set(patchRows.map(r => String(r.id)))
     const specs = this.readSpecs()
@@ -225,11 +234,15 @@ export class PluginManager {
       const isUserBundle = typeof packageName === 'string' && userBundleNames.has(packageName)
       // 提升待完成（bundle 已移除、patch 行待重启后写入）：fiber 仍在 registry 说明冻结 bundle 还在跑。
       const pendingPromote = specs.find(s => s.id === id)?.pendingPromote === true
+      // 降级待完成（patch 已移除、bundle 已加回）：重启后 bundle 生效、fiber 以 bundle 源回来。
+      const pendingDemote = specs.find(s => s.id === id)?.pendingDemote === true
       const source = this.classifySource(isSelf, patchIds.has(id), isUserBundle, pendingPromote)
       // patch/bundle 行可管理（非面板自身）；core 只读。
       const manageable = (source === 'patch' || source === 'bundle') && !isSelf
       const isProtected = !manageable || isSelf
-      const pendingRestart = pendingPromote && !isSelf
+      // 需重启标记：pendingPromote（bundle 已摘、重启后写 patch 行启用）或 pendingDemote
+      // （patch 已摘、bundle 已加回，重启后冷挂载生效）。
+      const pendingRestart = (pendingPromote || pendingDemote) && !isSelf
 
       views.push({
         id,
@@ -270,6 +283,9 @@ export class PluginManager {
       // 与 readPatchRows 的过滤对称——旧版本可能把 mcp 行误记为 patch 规格残留。
       if (spec.name === MCP_CLIENT_PACKAGE) continue
       const specSource = spec.source ?? 'patch'
+      // pendingDemote 中间态：patch 行已移除（热）、bundle 待重启挂载（冷）——
+      // 行在 bundle 生效前一直显示为「需重启」，避免用户以为已丢失。
+      const specPendingRestart = spec.pendingDemote === true && specSource === 'bundle'
       views.push({
         id: spec.id,
         source: specSource,
@@ -278,6 +294,7 @@ export class PluginManager {
         protected: false,
         manageable: specSource === 'patch' || specSource === 'bundle',
         isSelf: this.isSelf(spec.id),
+        ...(specPendingRestart ? { pendingRestart: true } : {}),
         packageName: spec.name,
       })
     }
@@ -563,6 +580,148 @@ export class PluginManager {
     }
     this.persistSpecs(specs)
     return { ok: true, id, restartRequired: true }
+  }
+
+  // ---- patch → bundle 降级（热 → 冷挂载，需重启一次） ----
+
+  /**
+   * 把 patch 行降级回 bundle（冷挂载）：从 cordis.patch.yml 移除行（热，fiber 立即卸载），
+   * 包名加回 dsh.profile.bundles（冷，重启后挂载），并恢复包的 `dsh.bundle` 声明
+   * （promote 时删除过；不恢复则 DSH reconcile 会把该包移出 bundles，降级无效）。
+   * 记录为 bundle 规格（pendingDemote），重启后 settlePendingDemote 自动清理标记。
+   */
+  demoteToBundle(id: string): PluginDemoteResult {
+    const views = this.list()
+    const view = views.find(v => v.id === id)
+    if (view === undefined) return { ok: false, reason: `未找到插件行 "${id}"` }
+    if (view.isSelf) return { ok: false, reason: '禁止对面板自身执行降级' }
+    if (view.source !== 'patch') return { ok: false, reason: `"${id}" 不是 patch 行，无需降级` }
+    const name = view.packageName
+    if (typeof name !== 'string' || name === '') return { ok: false, reason: `缺少 "${id}" 的包名，无法降级` }
+    // 先做可恢复性校验（不写任何文件）：包必须有可加载的 bundle 声明来源
+    // （已有声明 / .bak 备份 / 包内真实 patch 文件），否则 DSH 重启 fail loud。
+    // 校验通过才能动 patch 行与 bundles，避免半途失败留下不一致态。
+    const probe = this.probeBundleDeclaration(name)
+    if (!probe.ok) return probe
+    // 移除 patch 行（热，fiber 立即卸载）。
+    const rows = this.readPatchRows()
+    const filtered = rows.filter(r => String(r.id) !== id)
+    const rmResult = this.writePatch(filtered)
+    if (!rmResult.ok) return { ok: false, reason: rmResult.reason }
+    // 包名加回 bundles（冷挂载，重启后生效）。
+    const bundles = this.readBundleNames()
+    if (!bundles.includes(name)) {
+      bundles.push(name)
+      const addResult = this.writeBundleNames(bundles)
+      if (!addResult.ok) return { ok: false, reason: addResult.reason }
+    }
+    // 恢复 dsh.bundle 声明（probe 已保证可恢复）。
+    const restore = this.restoreBundleDeclaration(name, probe.declaration)
+    if (!restore.ok) return { ok: false, reason: restore.reason }
+    // 记录为 bundle 规格 + 待重启（pendingDemote）。
+    const specs = this.readSpecs()
+    const spec = specs.find(s => s.id === id)
+    if (spec === undefined) {
+      specs.push({ id, name, source: 'bundle', pendingDemote: true })
+    } else {
+      spec.source = 'bundle'
+      spec.pendingDemote = true
+      delete spec.pendingPromote
+    }
+    this.persistSpecs(specs)
+    return { ok: true, id, restartRequired: true }
+  }
+
+  /**
+   * 探测包作为 bundle 层加载的可行性（只读，不写文件）：
+   * 返回可用的 `dsh.bundle` 声明值（restore 时写入），或拒绝原因。
+   * 来源优先级：现有声明 > .bak 备份（promote 前原始声明）> 包内真实 patch 文件探测。
+   */
+  private probeBundleDeclaration(packageName: string): { ok: true; declaration: unknown } | { ok: false; reason: string } {
+    const pkgFile = join(this.profileDir, 'node_modules', packageName, 'package.json')
+    if (!existsSync(pkgFile)) return { ok: false, reason: `找不到 "${packageName}" 的 package.json` }
+    const text = readTextFileSync(pkgFile)
+    if (text === undefined) return { ok: false, reason: `找不到 "${packageName}" 的 package.json` }
+    try {
+      const pkg = JSON.parse(text) as { dsh?: { bundle?: unknown; [k: string]: unknown } }
+      if (pkg.dsh?.bundle !== undefined) return { ok: true, declaration: pkg.dsh.bundle }
+      const bakFile = pkgFile + '.bak'
+      if (existsSync(bakFile)) {
+        const bakText = readTextFileSync(bakFile)
+        if (bakText !== undefined) {
+          try {
+            const bakBundle = (JSON.parse(bakText) as { dsh?: { bundle?: unknown } })?.dsh?.bundle
+            if (bakBundle !== undefined) return { ok: true, declaration: bakBundle }
+          } catch { /* fall through to patch-file probe */ }
+        }
+      }
+      const manifestDir = dirname(pkgFile)
+      for (const candidate of ['cordis.patch.yml', 'cordis.patch.yaml', 'patch.yml', 'patch.yaml']) {
+        if (existsSync(join(manifestDir, candidate))) {
+          return { ok: true, declaration: { patch: `./${candidate}` } }
+        }
+      }
+      return { ok: false, reason: `"${packageName}" 无 dsh.bundle 声明、无 .bak 备份、包内也没有可加载的 patch 文件——无法作为 bundle 层，降级被拒` }
+    } catch (error) {
+      return { ok: false, reason: `probe ${packageName} failed: ${error instanceof Error ? error.message : String(error)}` }
+    }
+  }
+
+  /**
+   * 把 probeBundleDeclaration 探测到的声明写入包的 package.json。
+   * 不覆盖 .bak：promote 前（含声明）的原始 manifest 保留，供再次 promote 复用。
+   */
+  private restoreBundleDeclaration(packageName: string, declaration: unknown): { ok: true } | { ok: false; reason: string } {
+    const pkgFile = join(this.profileDir, 'node_modules', packageName, 'package.json')
+    if (!existsSync(pkgFile)) return { ok: false, reason: `找不到 "${packageName}" 的 package.json` }
+    const text = readTextFileSync(pkgFile)
+    if (text === undefined) return { ok: false, reason: `找不到 "${packageName}" 的 package.json` }
+    try {
+      const pkg = JSON.parse(text) as { dsh?: { bundle?: unknown; [k: string]: unknown } }
+      if (pkg.dsh?.bundle !== undefined) return { ok: true } // 已有声明，no-op
+      if (pkg.dsh === undefined) pkg.dsh = {}
+      pkg.dsh.bundle = declaration
+      atomicWriteFileSync(pkgFile, JSON.stringify(pkg, null, 2) + '\n')
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, reason: `restore ${packageName} failed: ${error instanceof Error ? error.message : String(error)}` }
+    }
+  }
+
+  /**
+   * 重启后收尾（list() 开头调用，幂等）：pendingDemote 的规格若已降级生效——fiber 以
+   * bundle 源回归 registry（patch 行已无该 id、包已在 bundles、且该 fiber 的包名属于
+   * 用户 bundle）——则清理 pendingDemote 标记，本次视图不再标红。否则保留：
+   * patch 行残留（又被手动加回）或 bundle 未生效时，标记在 specs 视图持续显示「需重启」。
+   */
+  private settlePendingDemote(): void {
+    const specs = this.readSpecs()
+    if (!specs.some(s => s.pendingDemote === true)) return
+    const patchRows = this.readPatchRows()
+    const patchIds = new Set(patchRows.map(r => String(r.id)))
+    const bundleNames = this.readBundleNames()
+    const userBundleNames = new Set(bundleNames.filter(n => !n.startsWith('@deepseek-ai/')))
+    // registry 中「包名属于用户 bundle」的 fiber id（降级生效的判据）。
+    const regressedBundleIds = new Set<string>()
+    for (const fiber of registryFibers(this.ctx)) {
+      const id = typeof fiber.name === 'string' && fiber.name !== '' ? fiber.name : undefined
+      if (id === undefined) continue
+      const pkg = patchRows.find(r => String(r.id) === id)?.name
+        ?? specs.find(s => s.id === id)?.name
+      if (typeof pkg === 'string' && userBundleNames.has(pkg)) regressedBundleIds.add(id)
+    }
+    let changed = false
+    for (const spec of specs) {
+      if (spec.pendingDemote !== true) continue
+      const inPatch = patchIds.has(spec.id)
+      const inBundles = bundleNames.includes(spec.name)
+      const regressed = regressedBundleIds.has(spec.id)
+      if (!inPatch && inBundles && regressed) {
+        delete spec.pendingDemote
+        changed = true
+      }
+    }
+    if (changed) this.persistSpecs(specs)
   }
 
   /**

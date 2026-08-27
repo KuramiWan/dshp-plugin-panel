@@ -75,6 +75,8 @@ import type {
   SkillPanelPluginInstallResult,
   SkillPanelPluginPromoteRequest,
   SkillPanelPluginPromoteResult,
+  SkillPanelPluginDemoteRequest,
+  SkillPanelPluginDemoteResult,
   SkillPanelSessionsRequest,
   SkillPanelSessionsResult,
 } from './types.ts'
@@ -208,6 +210,9 @@ export class SkillPanelService {
           break
         case 'pluginPromote':
           result = this.pluginPromote(payload as unknown as SkillPanelPluginPromoteRequest)
+          break
+        case 'pluginDemote':
+          result = this.pluginDemote(payload as unknown as SkillPanelPluginDemoteRequest)
           break
         case 'sessions':
           result = this.sessions(payload as unknown as SkillPanelSessionsRequest)
@@ -456,6 +461,14 @@ export class SkillPanelService {
   pluginPromote(request: SkillPanelPluginPromoteRequest): SkillPanelPluginPromoteResult {
     this.agentOf(request.sessionId)
     const result = this.plugins.promoteToPatch(request.id)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true, id: result.id, restartRequired: result.restartRequired }
+  }
+
+  /** 把 patch 行降级回 bundle 行（冷挂载；热→冷迁移，需重启一次）。 */
+  pluginDemote(request: SkillPanelPluginDemoteRequest): SkillPanelPluginDemoteResult {
+    this.agentOf(request.sessionId)
+    const result = this.plugins.demoteToBundle(request.id)
     if (!result.ok) return { ok: false, reason: result.reason }
     return { ok: true, id: result.id, restartRequired: result.restartRequired }
   }

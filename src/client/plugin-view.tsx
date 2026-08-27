@@ -161,6 +161,10 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
     runAction(() => client!.pluginPromote({ sessionId, id: entry.id }), (r) => `${t('plugin.notice.promoted')}: ${r.id}`)
   }
 
+  const runDemote = (entry: SkillPanelPluginEntry): void => {
+    runAction(() => client!.pluginDemote({ sessionId, id: entry.id }), (r) => `${t('plugin.notice.demoted')}: ${r.id}`)
+  }
+
   const runSelectMcp = (name: string): void => {
     runAction(
       () => client!.mcpSelect({ sessionId, name }),
@@ -235,6 +239,9 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
               <>
                 {p.source === 'bundle' && p.active && (
                   <button className="dshp-btn" onClick={() => runPromote(p)} disabled={busy}>{t('plugin.action.promote')}</button>
+                )}
+                {p.source === 'patch' && p.active && (
+                  <button className="dshp-btn" onClick={() => runDemote(p)} disabled={busy}>{t('plugin.action.demote')}</button>
                 )}
                 {p.active
                   ? <button className="dshp-btn dshp-btn-danger" onClick={() => runToggle(p, false)} disabled={busy}>{t('plugin.action.disable')}</button>
