@@ -14,13 +14,13 @@
 | `scripts/switch-mount.sh` | 归档：开发循环工具（历史存档，不作开发调用） | 存档 |
 | `INSTALL.md` | test 环境接入指引 | 见下文「接入 DSH test 环境」 |
 
-## 环境模型（单分支 + 多 profile）
+## 环境模型（单分支 + DSH_HOME 根隔离）
 
 - **一个仓库、一个 main 分支**：插件生产代码（`src/`、`package.json`、文档）+ `test/fixtures/` 共存。
-- **环境差异全在 profile 配置**：一个 DSH home（`~/.dsh`）下多 profile——
-  `web`（生产 npm）/ `dev`（main 代码）/ `test`（main 代码 + fixtures）。
-  组合层（node_modules + bundles + patch）各自独立；test 技能池经 poolRoot 隔离到
-  `<项目>/.pool-test`。面板代码以**真副本**（非软链）装入 profile。
+- **环境差异在 `$DSH_HOME` 根**：一个 dsh 内核，生产用默认根（`~/.dsh`，`web`
+  profile，npm 发布版）；开发/测试用项目内根（`.dsh-dev/`，`web` profile，
+  与生产同组合）。测试根通过 patch 挂 fixtures（`./dsh-test` 自动完成），
+  凭证经 `config.path` 指向生产（零复制）。
 - 面板自动探测所在 profile（`ctx.baseUrl`），无需注入 `profileDir`。
 
 > 注：`test-plugin` 的入口是 `index.js`（JS）而非 `src/index.ts`——DSH 的 Node loader
