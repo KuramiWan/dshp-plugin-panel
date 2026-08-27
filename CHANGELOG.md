@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-28
+
+### Added
+- `pluginDemote`（改为冷挂载）：热插拔（patch）行可降级回 bundle（冷挂载）——与
+  `promoteToPatch` 对称；降级时自动恢复包的 `dsh.bundle` 声明（优先从 .bak 还原，
+  否则探测包内真实 patch 文件；两者皆无则拒绝），标记 `pendingDemote` 待重启生效。
+- 面板自动探测所在 profile：dsh boot 时 `ctx.baseUrl` 即 profile 目录（官方机制），
+  PluginManager / SessionMcpManager 从它派生 profileDir——不再需要往 patch 注入
+  `profileDir`（`config.profileDir` 显式提供时仍优先，向后兼容）。
+- 开发环境：`dsh-dev` / `dsh-test` wrapper——DSH_HOME 隔离开发根（`.dsh-dev/`）、
+  官方 `web` profile（与生产同组合）、凭证/模型配置经 `config.path` 指向生产
+  （零复制零软链）；`dsh-test` 自动补全 fixtures patch。
+- 测试 fixtures 并入仓库（`test/fixtures/`：skill-pool ×4、dshp-test-plugin、
+  test-mcp-stdio 桥接行）。
+
+### Fixed
+- M3：patch 里的 mcp 桥接行不再被插件段当 patch 行管理（`readPatchRows` 跳过）。
+- M7：mcp 全局形态支持 profile patch——`select`/`removeTemplate` 同时处理
+  home + profile patch，取消管理后条目不再消失（sidecar 记 `__sourceFile`）。
+- M8：停用 fixtures 预置的 patch 行后保留为已停用（可重新启用），不再完全消失。
+- M9：`writePatch` 重建时保留 mcp 桥接行——停用插件不再连带删除同 patch 的
+  mcp 行。
+
 ## [0.1.4] - 2026-08-25
 
 ### Added
@@ -86,7 +109,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added project governance: `LICENSE` (MIT, © 2026 super_camel),
   `CONTRIBUTING.md`, CI (lightweight type-check), Keep-a-Changelog file.
 
-[Unreleased]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.1...v0.1.2
