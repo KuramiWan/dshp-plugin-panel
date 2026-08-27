@@ -181,63 +181,63 @@ pnpm debug --logs 20             # 最多包含 20 条最近的 error/warn 日�
 
 ## 开发环境
 
-插件支持一个 DSH home（`~/.dsh`）下多个 profile，仅用官方 `dsh` 命令搭建
-（无 setup 脚本、无额外配置文件）。**单分支，环境差异由 profile 配置区分**：
+一个 dsh 内核，多个 `$DSH_HOME` 根隔离环境。生产用默认根（`~/.dsh`，仅 `web`
+profile）；开发用项目内根（`.dsh-dev/`），与生产**完全隔离**——开发活动不碰
+`~/.dsh`。模型配置与凭证经 `config.path` 指向生产文件跨根共享（零复制、零软链）。
 
-| Profile | 代码来源 | 用途 |
+| 根 | profiles | 用途 |
 |---|---|---|
-| `web` | npm 发布版 | 生产 |
-| `dev` | 本仓库（main） | 开发 |
-| `test` | 本仓库（main）+ `test/fixtures/` | 测试（`poolRoot` 隔离技能池） |
+| `~/.dsh` | `web`（npm 发布版） | 生产 |
+| `<仓库>/.dsh-dev` | `dev`、`test`（+ fixtures） | 开发 / 测试 |
 
-前置：`dsh` 在 PATH、`pnpm`、`node ≥ 20`；本仓库（main 分支）checkout。
-**clone 后必须先 `pnpm install && pnpm build`**（`lib/` 不进 git）。
-
-### dev / test —— 纯官方命令
+### 一次性构建（每台机器一次）
 
 ```bash
-# 1. 构建面板 checkout（clone 后一次性）
+# 1. 构建面板 checkout（clone 后必做；lib/ 不进 git）
 cd dshp-skill-panel && pnpm install && pnpm build
 
-# 2. 挂载面板到 profile —— 官方入口：profile 不存在则自动初始化，
-#    然后 pnpm add + 按安装状态 reconcile dsh.profile.bundles。
-#    面板声明了 dsh.bundle.patch，自动进入 bundle 层。
-dsh plugin --profile dev add "$PWD/dshp-skill-panel"
-dsh plugin --profile test add "$PWD/dshp-skill-panel"
+# 2. 建开发根 + 挂载面板（官方入口：initProfile + pnpm add + reconcile bundles）
+mkdir -p .dsh-dev
+DSH_HOME="$PWD/.dsh-dev" dsh plugin --profile dev add "$PWD"
+DSH_HOME="$PWD/.dsh-dev" dsh plugin --profile test add "$PWD"
 
 # 3. （仅 test）fixtures —— 真副本，不要软链
-#    a. test-plugin：复制进 profile 的 node_modules（不要用 dsh plugin add——
-#       那样会双挂载：bundle 层 + patch 行同 id，启动崩溃）。它通过下面的
-#       patch 行热挂载。
-mkdir -p ~/.dsh/profiles/test/node_modules
-cp -r test/fixtures/test-plugin ~/.dsh/profiles/test/node_modules/dshp-test-plugin
-#    b. profile patch：fixtures 文件含 dshp-test-plugin 行（热插拔）与
-#       test-mcp-stdio MCP 桥接行；不含面板行（面板从自己的 bundle.patch 挂载）。
-#       若你手改过 profile patch，先备份再覆盖。
-cp test/fixtures/test-profile/cordis.patch.yml ~/.dsh/profiles/test/cordis.patch.yml
-#    c. 独立技能池（可选）：poolRoot 指到 ~/.dsh 之外，fixtures 不污染生产技能页签。
-mkdir -p "$PWD/.pool-test/local"
-cp -r test/fixtures/skill-pool/. "$PWD/.pool-test/local/"
-#       然后在 profile patch 里加面板行（不隔离可省，面板用默认池）：
-#         - id: dshp-skill-panel
-#           config:
-#             poolRoot: $PWD/.pool-test
+mkdir -p .dsh-dev/profiles/test/node_modules
+cp -r test/fixtures/test-plugin .dsh-dev/profiles/test/node_modules/dshp-test-plugin
+cp test/fixtures/test-profile/cordis.patch.yml .dsh-dev/profiles/test/cordis.patch.yml
+mkdir -p .pool-test/local && cp -r test/fixtures/skill-pool/. .pool-test/local/
+```
 
-# 4. 启动
-dsh --profile dev --port 3081
-dsh --profile test --port 3081
+wrapper 脚本（`./dsh-dev`、`./dsh-test`）首次运行自动补全凭证/设置共享 patch
+（`config.path` → 生产 `~/.dsh` 文件），然后启动环境。
+
+### 日常使用 —— 单命令
+
+```bash
+./dsh-dev --port 3081         # 开发（DSH_HOME=.dsh-dev，dev profile）
+./dsh-test --port 3081        # 测试（DSH_HOME=.dsh-dev，test profile）
+dsh --profile web --port 3081 # 生产（默认 ~/.dsh，npm 发布版）
 ```
 
 面板通过 `ctx.baseUrl`（dsh 启动时设为 profile 目录）自动探测所在 profile，
 无需注入 `profileDir`。
 
-### 切回生产 `web`
+### 凭证/模型配置共享
 
-`web` 是 npm 发布版，安装已发布包：
+开发根经 `config.path` 把 `settings` / `credentials` 指向生产文件（wrapper 自动完成）：
 
-```bash
-dsh plugin --profile web add @super_camel/dsh-skill-panel
+```yaml
+# .dsh-dev/profiles/<name>/cordis.patch.yml（./dsh-<name> 自动追加）
+- id: settings
+  config:
+    path: $HOME/.dsh/settings.yaml
+- id: credentials
+  config:
+    path: $HOME/.dsh/.credentials.yaml
 ```
+
+- 模型定义与 API key 直接读生产文件（零复制）
+- 开发根保留自己的会话/技能/profile——开发绝不写生产
 
 ## FAQ
 

@@ -4,3 +4,5 @@ node_modules/
 npm-debug.log*
 test/.tmp/
 lib/
+# 本地开发根（DSH_HOME 隔离；含 profile/会话/凭证引用，不进 git）
+.dsh-dev/

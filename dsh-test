@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+#
+# dsh-dev / dsh-test —— 开发/测试环境启动器（单命令拉起独立 DSH 内核）
+#
+# 架构（2026-08 定案）：一个 dsh 内核，多个 DSH_HOME 根隔离环境。
+#   - 生产：DSH_HOME=~/.dsh（默认根，含 web profile，本脚本绝不触碰）
+#   - 开发：DSH_HOME=<项目>/.dsh-dev（本脚本使用；含 dev / test profile）
+#   - 凭证/模型配置共享：开发根 cordis.patch.yml 里 config.path 指向生产
+#     settings.yaml / .credentials.yaml（零复制、零软链、换机器免配）
+#
+# 用法：
+#   ./dsh-dev --port 3081          # 启动开发 profile（单命令）
+#   ./dsh-test --port 3081         # 启动测试 profile
+#   ./dsh-dev --dump-config        # 查看开发组合（不启动）
+#   ./dsh-dev --profile test ...   # 透传（默认已带 --profile dev/test）
+#
+# 前置：先运行「构建」一次（见 README Development environments）：
+#   DSH_HOME=$PWD/.dsh-dev dsh plugin --profile dev add "$PWD"
+#   （在仓库根执行；本脚本只负责启动，不负责构建）
+
+set -euo pipefail
+
+# ---- 0. 环境选择 ----
+SCRIPT_NAME="$(basename "$0")"
+case "$SCRIPT_NAME" in
+  dsh-dev)  ENV_NAME="dev" ;;
+  dsh-test) ENV_NAME="test" ;;
+  *) echo "usage: 以 dsh-dev 或 dsh-test 命名本脚本"; exit 2 ;;
+esac
+
+# ---- 1. 定位（脚本与 .dsh-dev 都在仓库根，随仓库走） ----
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEV_HOME="$PROJECT_ROOT/.dsh-dev"
+
+# ---- 2. 校验开发根已构建 ----
+if [ ! -f "$DEV_HOME/profiles/$ENV_NAME/package.json" ]; then
+  echo "错误: 开发 profile $ENV_NAME 未构建。请先在仓库根执行:" >&2
+  echo "  DSH_HOME=\"\$PWD/.dsh-dev\" dsh plugin --profile $ENV_NAME add \"\$PWD\"" >&2
+  exit 1
+fi
+
+# ---- 2.5 自动补全凭证/设置共享（幂等） ----
+# dsh plugin add 生成的 patch 是空模板（顶层裸 []）；此处把「模型配置/凭证
+# 跨根共享」（config.path 指向生产 ~/.dsh 文件）写进 patch。已有则跳过。
+# 注意：裸 [] 后不能直接追加 YAML 条目（非法文档），先剔除裸 [] 行。
+PATCH_FILE="$DEV_HOME/profiles/$ENV_NAME/cordis.patch.yml"
+if ! grep -q "id: credentials" "$PATCH_FILE" 2>/dev/null; then
+  # 剔除「仅含 []」的空文档行（顶层裸 []），保证后续条目合法
+  if [ -f "$PATCH_FILE" ]; then
+    grep -v '^\s*\[\]\s*$' "$PATCH_FILE" > "$PATCH_FILE.tmp" || true
+    mv "$PATCH_FILE.tmp" "$PATCH_FILE"
+  fi
+  cat >> "$PATCH_FILE" <<EOF
+
+# 共享生产模型配置与凭证（config.path 指向生产 ~/.dsh，零复制零软链）
+- id: settings
+  config:
+    path: $HOME/.dsh/settings.yaml
+
+- id: credentials
+  config:
+    path: $HOME/.dsh/.credentials.yaml
+EOF
+  echo "已补全开发 profile $ENV_NAME 的凭证/设置共享（指向生产 ~/.dsh）"
+fi
+
+# ---- 3. 启动（开发根，生产 ~/.dsh 只读） ----
+export DSH_HOME="$DEV_HOME"
+# 用户显式 --profile 优先，否则用本脚本对应 profile
+if printf '%s\n' "$@" | grep -q -- "--profile"; then
+  exec dsh "$@"
+else
+  exec dsh --profile "$ENV_NAME" "$@"
+fi
