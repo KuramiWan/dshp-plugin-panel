@@ -36,6 +36,8 @@ import { isMcpClientConfig, registryFibers } from './registry.ts'
 /** 面板自身包名与行 id（禁止停）。 */
 export const PANEL_PACKAGE = '@super_camel/dsh-skill-panel'
 export const PANEL_ROW_ID = 'dshp-skill-panel'
+/** mcp-client 桥接包名（M3：patch 行/spec 里 name 为该包者不当作插件 patch 行管理）。 */
+export const MCP_CLIENT_PACKAGE = '@deepseek-ai/dsh-mcp-client'
 
 /** 组合行来源：core（bundle / host 核心）| patch（活动 profile 用户插件行）| mcp（mcp-client 桥接）。 */
 export type PluginSource = 'core' | 'patch' | 'bundle' | 'mcp'
@@ -264,6 +266,9 @@ export class PluginManager {
     for (const spec of specs) {
       if (seenIds.has(spec.id)) continue
       if (this.isSelf(spec.id)) continue // 面板自身行 id 不当作「已停用」
+      // M3 修复：mcp 桥接行规格（name 是 mcp-client 包）不作为插件 patch 行展示。
+      // 与 readPatchRows 的过滤对称——旧版本可能把 mcp 行误记为 patch 规格残留。
+      if (spec.name === MCP_CLIENT_PACKAGE) continue
       const specSource = spec.source ?? 'patch'
       views.push({
         id: spec.id,
@@ -307,7 +312,14 @@ export class PluginManager {
     for (const opt of this.readPatchOptions()) {
       if (opt !== null && typeof opt === 'object' && Array.isArray(opt.insert)) {
         for (const row of opt.insert) {
-          if (row !== null && typeof row === 'object' && typeof row.id === 'string') rows.push(row)
+          if (row !== null && typeof row === 'object' && typeof row.id === 'string') {
+            // M3 修复：mcp 桥接行（config 有 serverName/transport）不走插件段 patch 管理——
+            // 与 fiber 循环的 isMcpClientConfig → continue 对称。若混入，syncSpecs 会把它
+            // 记为 patch 规格、list 的 specs 视图把它当 patch 行 → 启停报"已在 patch 中"。
+            // mcp 行由 MCP 段（白名单/发现）管理。
+            if (isMcpClientConfig((row as { config?: unknown }).config)) continue
+            rows.push(row)
+          }
         }
       }
     }
@@ -594,7 +606,11 @@ export class PluginManager {
   private syncSpecs(): void {
     const rows = this.readPatchRows()
     const map = new Map<string, UserPluginSpec>()
-    for (const spec of this.readSpecs()) map.set(spec.id, spec)
+    // M3 修复：读入时跳过 mcp 桥接行规格（旧版本可能误记残留），一并清理。
+    for (const spec of this.readSpecs()) {
+      if (spec.name === MCP_CLIENT_PACKAGE) continue
+      map.set(spec.id, spec)
+    }
     for (const r of rows) {
       if (typeof r.id !== 'string' || typeof r.name !== 'string' || r.name === '') continue
       map.set(r.id, { id: r.id, name: r.name, source: 'patch' })

@@ -259,3 +259,45 @@ test('M2: 双挂载（patch + bundle）disable 时同步撤 bundle，并标注�
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('M3: patch 里的 mcp 桥接行不应被当 patch 行管理（启停报"已在 patch 中"的根因）', async () => {
+  // fixtures 场景：profile patch 的 insert 块里有一个 mcp-client 桥接行
+  // （config 有 serverName/transport）+ 一个普通插件行。面板的插件段应只管理
+  // 普通插件行；mcp 桥接行由 MCP 段（白名单/发现）处理。
+  const { root, manager } = makeManager()
+  try {
+    writeFileSync(patchFile(root), [
+      '- insert:',
+      '    - id: test-mcp-stdio',
+      '      name: "@deepseek-ai/dsh-mcp-client"',
+      '      config:',
+      '        serverName: test-mcp-stdio',
+      '        transport: stdio',
+      '        command: __nonexistent_fixture_server__',
+      '        args: []',
+      '    - id: normal-plugin',
+      '      name: "@user/normal-plugin"',
+      '',
+    ].join('\n'), 'utf8')
+
+    // 触发 syncSpecs（install 会调它），模拟"环境曾启停过"后的状态文件写入。
+    manager.install('another', '@x/another')
+
+    // 1. 状态文件不应把 mcp 桥接行记为 patch 规格
+    const stateFile = join(root, '.dshp-plugins.json')
+    const specs = JSON.parse(readFileSync(stateFile, 'utf8')).plugins as Array<{ id: string; source: string }>
+    assert.ok(!specs.some(s => s.id === 'test-mcp-stdio'), 'mcp 桥接行不应被 syncSpecs 记为 patch 规格')
+    // 普通行和触发行正常记录
+    assert.ok(specs.some(s => s.id === 'normal-plugin'), '普通 patch 行应被记录')
+    assert.ok(specs.some(s => s.id === 'another'), 'install 的行应被记录')
+
+    // 2. 无对应 fiber 时，list() 不应把 mcp 桥接行当 patch 行展示（可管理）
+    //    （mcp 行的展示由白名单负责）
+    const views = manager.list()
+    const mcpView = views.find(v => v.id === 'test-mcp-stdio')
+    assert.ok(mcpView === undefined || mcpView.source !== 'patch',
+      `mcp 桥接行不应以 patch 行展示，实际 source=${mcpView?.source}`)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
