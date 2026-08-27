@@ -181,14 +181,17 @@ pnpm debug --logs 20             # 最多包含 20 条最近的 error/warn 日�
 
 ## 开发环境
 
-一个 dsh 内核，多个 `$DSH_HOME` 根隔离环境。生产用默认根（`~/.dsh`，仅 `web`
-profile）；开发用项目内根（`.dsh-dev/`），与生产**完全隔离**——开发活动不碰
-`~/.dsh`。模型配置与凭证经 `config.path` 指向生产文件跨根共享（零复制、零软链）。
+一个 dsh 内核，多个 `$DSH_HOME` 根隔离环境。生产用默认根（`~/.dsh`）；
+开发用项目内根（`.dsh-dev/`），与生产**完全隔离**——开发活动不碰 `~/.dsh`。
+两个根都跑**官方 `web` profile**（dsh-base + dsh-web-app + 面板，与生产同组合）；
+dev/test 差异只在 patch 内容。模型配置与凭证经 `config.path` 指向生产文件
+跨根共享（零复制、零软链）。
 
-| 根 | profiles | 用途 |
+| 根 | profile | 用途 |
 |---|---|---|
 | `~/.dsh` | `web`（npm 发布版） | 生产 |
-| `<仓库>/.dsh-dev` | `dev`、`test`（+ fixtures） | 开发 / 测试 |
+| `<仓库>/.dsh-dev` | `web`（仓库构建） | 开发（无 fixtures） |
+| `<仓库>/.dsh-dev` | `web` + fixtures patch | 测试（dshp-test-plugin + test-mcp-stdio） |
 
 ### 一次性构建（每台机器一次）
 
@@ -196,26 +199,22 @@ profile）；开发用项目内根（`.dsh-dev/`），与生产**完全隔离**�
 # 1. 构建面板 checkout（clone 后必做；lib/ 不进 git）
 cd dshp-skill-panel && pnpm install && pnpm build
 
-# 2. 建开发根 + 挂载面板（官方入口：initProfile + pnpm add + reconcile bundles）
+# 2. 建开发根 + 挂载面板（官方入口：initProfile + pnpm add + reconcile bundles；
+#    `web` 是官方模板，base + web-app 自动带上）
 mkdir -p .dsh-dev
-DSH_HOME="$PWD/.dsh-dev" dsh plugin --profile dev add "$PWD"
-DSH_HOME="$PWD/.dsh-dev" dsh plugin --profile test add "$PWD"
-
-# 3. （仅 test）fixtures —— 真副本，不要软链
-mkdir -p .dsh-dev/profiles/test/node_modules
-cp -r test/fixtures/test-plugin .dsh-dev/profiles/test/node_modules/dshp-test-plugin
-cp test/fixtures/test-profile/cordis.patch.yml .dsh-dev/profiles/test/cordis.patch.yml
-mkdir -p .pool-test/local && cp -r test/fixtures/skill-pool/. .pool-test/local/
+DSH_HOME="$PWD/.dsh-dev" dsh plugin --profile web add "$PWD"
 ```
 
-wrapper 脚本（`./dsh-dev`、`./dsh-test`）首次运行自动补全凭证/设置共享 patch
-（`config.path` → 生产 `~/.dsh` 文件），然后启动环境。
+就这些。wrapper 脚本（`./dsh-dev`、`./dsh-test`）首次运行自动补全：
+凭证/设置共享 patch（`config.path` → 生产 `~/.dsh` 文件）；`./dsh-test`
+额外补全 fixtures patch（dshp-test-plugin 行 + test-mcp-stdio MCP 桥接行，
+fixture 包以真副本装入，不软链）。
 
 ### 日常使用 —— 单命令
 
 ```bash
-./dsh-dev --port 3081         # 开发（DSH_HOME=.dsh-dev，dev profile）
-./dsh-test --port 3081        # 测试（DSH_HOME=.dsh-dev，test profile）
+./dsh-dev --port 3181         # 开发（DSH_HOME=.dsh-dev，web profile）
+./dsh-test --port 3182        # 测试（同根，web profile + fixtures）
 dsh --profile web --port 3081 # 生产（默认 ~/.dsh，npm 发布版）
 ```
 

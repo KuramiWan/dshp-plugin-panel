@@ -201,15 +201,18 @@ If a skill isn't visible, check that it's a subdirectory containing a `SKILL.md`
 ## Development environments
 
 One dsh kernel, multiple isolated `$DSH_HOME` roots. Production uses the
-default root (`~/.dsh`, `web` profile only). Development uses a project-local
-root (`.dsh-dev/`), completely separate from production — dev activity never
-touches `~/.dsh`. Model config & credentials are shared across roots via
-`config.path` pointing at the production files (zero copy, zero symlinks).
+default root (`~/.dsh`). Development uses a project-local root (`.dsh-dev/`),
+completely separate from production — dev activity never touches `~/.dsh`.
+Both roots run the **official `web` profile** (dsh-base + dsh-web-app + panel,
+the same composition as production); dev/test differ only in patch content.
+Model config & credentials are shared across roots via `config.path` pointing
+at the production files (zero copy, zero symlinks).
 
-| Root | Profiles | Purpose |
+| Root | Profile | Purpose |
 |---|---|---|
 | `~/.dsh` | `web` (npm release) | production |
-| `<repo>/.dsh-dev` | `dev`, `test` (+ fixtures) | development / testing |
+| `<repo>/.dsh-dev` | `web` (repo build) | development (no fixtures) |
+| `<repo>/.dsh-dev` | `web` + fixtures patch | testing (dshp-test-plugin + test-mcp-stdio) |
 
 ### One-time build (per machine)
 
@@ -218,27 +221,23 @@ touches `~/.dsh`. Model config & credentials are shared across roots via
 cd dshp-skill-panel && pnpm install && pnpm build
 
 # 2. create the dev root + mount the panel (official entry point:
-#    initProfile + pnpm add + reconcile bundles)
+#    initProfile + pnpm add + reconcile bundles; `web` is the official
+#    template so base + web-app come automatically)
 mkdir -p .dsh-dev
-DSH_HOME="$PWD/.dsh-dev" dsh plugin --profile dev add "$PWD"
-DSH_HOME="$PWD/.dsh-dev" dsh plugin --profile test add "$PWD"
-
-# 3. (test only) fixtures — real copies, no symlinks
-mkdir -p .dsh-dev/profiles/test/node_modules
-cp -r test/fixtures/test-plugin .dsh-dev/profiles/test/node_modules/dshp-test-plugin
-cp test/fixtures/test-profile/cordis.patch.yml .dsh-dev/profiles/test/cordis.patch.yml
-mkdir -p .pool-test/local && cp -r test/fixtures/skill-pool/. .pool-test/local/
+DSH_HOME="$PWD/.dsh-dev" dsh plugin --profile web add "$PWD"
 ```
 
-The wrapper scripts (`./dsh-dev`, `./dsh-test`) auto-complete the shared
-credentials/settings patch (`config.path` → production `~/.dsh` files) on
-first run, then start the environment.
+That's it. The wrapper scripts (`./dsh-dev`, `./dsh-test`) auto-complete on
+first run: the credentials/settings sharing patch (`config.path` → production
+`~/.dsh` files), and — for `./dsh-test` — the fixtures patch (dshp-test-plugin
+row + test-mcp-stdio MCP bridge row, copying the fixture package in as a real
+copy, no symlink).
 
 ### Daily usage — one command
 
 ```bash
-./dsh-dev --port 3081        # development (DSH_HOME=.dsh-dev, dev profile)
-./dsh-test --port 3081       # testing (DSH_HOME=.dsh-dev, test profile)
+./dsh-dev --port 3181        # development (DSH_HOME=.dsh-dev, web profile)
+./dsh-test --port 3182       # testing (same root, web profile + fixtures)
 dsh --profile web --port 3081 # production (default ~/.dsh, npm release)
 ```
 
