@@ -131,18 +131,27 @@ if [ "$WITH_FIXTURES" = "true" ]; then
   cp -r "$CHECKOUT/test/fixtures/test-plugin" "$PROFILE_DIR/node_modules/dshp-test-plugin"
   # 5c. test-profile patch → profile 根（含 dshp-test-plugin + test-mcp-stdio 行）
   cp "$CHECKOUT/test/fixtures/test-profile/cordis.patch.yml" "$PROFILE_DIR/cordis.patch.yml"
-  # 5d. poolRoot 覆盖：面板行 config.poolRoot 指向独立 pool
-  if [ "$POOL_MODE" = "isolated" ]; then
-    printf '\n# poolRoot 隔离：fixtures 技能池不污染生产技能页签\n- id: dshp-skill-panel\n  config:\n    poolRoot: %s\n' "$POOL_DIR" >> "$PROFILE_DIR/cordis.patch.yml"
-  fi
+  # 5d. 面板行 config 注入：profileDir（显式声明本 profile，避免 resolveProfileDir 猜错回退 web）
+  #      + poolRoot（isolated 时隔离技能池）
+  {
+    printf '\n# 显式声明本 profile（面板 plugin-manager 不再扫描猜测）\n- id: dshp-skill-panel\n  config:\n    profileDir: %s\n' "$PROFILE_DIR"
+    if [ "$POOL_MODE" = "isolated" ]; then
+      printf '    poolRoot: %s\n' "$POOL_DIR"
+    fi
+  } >> "$PROFILE_DIR/cordis.patch.yml"
   log "fixtures 就位：skill-pool ×4、dshp-test-plugin、test-mcp-stdio patch"
 else
-  # dev 环境用干净 patch
-  cat > "$PROFILE_DIR/cordis.patch.yml" <<'EOF'
+  # dev 环境：干净 patch + 显式 profileDir（避免 resolveProfileDir 猜错回退 web）
+  cat > "$PROFILE_DIR/cordis.patch.yml" <<EOF
 # Your patch layer for this dsh profile, applied after every bundle layer:
 # a top-level YAML array of loader patch entries (id-targeted config
 # overrides, disables, and insert lists; `!!js` expressions allowed).
 []
+
+# 显式声明本 profile（面板 plugin-manager 不再扫描猜测）
+- id: dshp-skill-panel
+  config:
+    profileDir: $PROFILE_DIR
 EOF
 fi
 
