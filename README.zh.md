@@ -203,7 +203,9 @@ DSH_HOME="$PWD/.dsh-dev" dsh plugin --profile web add "$PWD"
 ```
 
 就这些。wrapper 脚本（`./dsh-dev`、`./dsh-test`）首次运行自动补全：
-凭证/设置共享 patch（`config.path` → 生产 `~/.dsh` 文件）；`./dsh-test`
+凭证/设置共享 patch（`config.path` → 生产 `~/.dsh` 文件）；`web-app`
+bundle 兜底（若 profile 模板组合缺 `@deepseek-ai/dsh-web-app` 则幂等补入，
+防止面板 initialized 后无 web 层静默挂起的回归）；`./dsh-test`
 额外补全 fixtures patch（dshp-test-plugin 行 + test-mcp-stdio MCP 桥接行，
 fixture 包以真副本装入，不软链）。
 
