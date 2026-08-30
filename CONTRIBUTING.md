@@ -1,4 +1,4 @@
-# Contributing to dshp-skill-panel
+# Contributing to dshp-plugin-panel
 
 Thanks for considering contributing! This is a small, focused plugin for
 DeepSeek Harness (DSH) session-scoped skill control. Keep changes small,
@@ -11,10 +11,10 @@ recorded in the DSH monorepo's `docs/adr/`.
 - **One surface, one source of truth.** `browse` / `introduce` / `remove`
   business logic lives in `src/actions.ts` + `src/pool.ts` — the model tools
   (`src/tools.ts`), slash commands (`src/commands.ts`) and the panel
-  (`src/skill-panel-service.ts` + `src/client/`) all forward to it. Do not
+  (`src/plugin-panel-service.ts` + `src/client/`) all forward to it. Do not
   duplicate business logic in a surface.
 - **No typert / Remote.** The panel talks to the host over a DSH `webServer`
-  HTTP route (`POST /skill-panel/<method>`), client uses relative-path
+  HTTP route (`POST /plugin-panel/<method>`), client uses relative-path
   `fetch`. Keep it that way — it is what keeps this package buildable outside
   the DSH monorepo.
 - **Session scoping.** Introductions are per-session and idempotent; shadow
@@ -27,9 +27,9 @@ recorded in the DSH monorepo's `docs/adr/`.
 
 ## Project structure
 
-- `index.ts` — plugin entry: `SkillControlPlugin` (default export),
+- `index.ts` — plugin entry: `PluginPanelPlugin` (default export),
   `inject: ['agents','tools','skills','commands']`, `Config.poolRoot?`;
-  registers tools + commands (`ctx.effect`), the `SkillPanelService` sub-service
+  registers tools + commands (`ctx.effect`), the `PluginPanelService` sub-service
   (`ctx.plugin`), and subscribes to `agent/session-start` (source=resume) to
   replay the session introduced set.
 - `pool.ts` — pool read layer: `local/` directory scan / `SKILL.md` frontmatter
@@ -42,15 +42,15 @@ recorded in the DSH monorepo's `docs/adr/`.
   introduce / remove / replaySession.
 - `tools.ts` — the 5 model tools (`ctx.tools.register` + `ctx.effect`).
 - `commands.ts` — the 5 slash commands (`ctx.commands.register` + `ctx.effect`).
-- `skill-panel-service.ts` — `SkillPanelService` (`inject: ['agents','skills']`):
+- `plugin-panel-service.ts` — `PluginPanelService` (`inject: ['agents','skills']`):
   registers the HTTP route via `ctx.get('webServer').register({kind:'prefix',
-  path:'/skill-panel'})` (`ctx.effect` cleanup), `dispatch` routes
+  path:'/plugin-panel'})` (`ctx.effect` cleanup), `dispatch` routes
   `browse/list/detail/introduce/removeSkill` to pool/store; no typert.
 - `types.ts` — panel boundary payload types (pure serializable, host/client
   shared).
-- `client/` — browser half: `index.ts` (`createSkillPanelClient()` + registers
+- `client/` — browser half: `index.ts` (`createPluginPanelClient()` + registers
   the `settings.section` slot), `api.ts` (HTTP client: relative-path
-  `fetch('/skill-panel/<method>')`, returns raw business JSON), `view.tsx`
+  `fetch('/plugin-panel/<method>')`, returns raw business JSON), `view.tsx`
   (two-pane view: pool + introduced, search / detail expand / shadow badge),
   `sections.tsx`, `locale.ts` (zh/en), `styles.ts` (`--dsw-alias-*` theme
   tokens).
@@ -92,7 +92,7 @@ so the package builds independently of the DSH source tree.
   uses its own subdir under `test/.tmp/` so parallel runs don't clobber each other.
 - Manual smoke checks: commands main path, idempotency edges, slash-skill
   invocation, model tools, session isolation, and the panel.
-- For browser UI changes, verify in the DSH web GUI Settings → 「技能面板」.
+- For browser UI changes, verify in the DSH web GUI Settings → 「插件面板」.
 
 ## Commit style
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# dshp-skill-panel 本地挂载切换脚本（归档版，历史存档，不作开发调用）
+# dshp-plugin-panel 本地挂载切换脚本（归档版，历史存档，不作开发调用）
 #
 # 在「开发模式」（link 到工作区，改动即生效）与「真实使用模式」（用已安装/已发布的
-# 真实副本）之间切换 web profile 里挂载的 @super_camel/dsh-skill-panel。
+# 真实副本）之间切换 web profile 里挂载的 @super_camel/dsh-plugin-panel。
 #
 # 归档说明：本脚本曾用于旧的 DSH_HOME 隔离方案的开发循环；现环境用官方 profile
 # 机制 + 真副本（非软链），本脚本仅作历史参考，DSH test profile 接入不依赖它。
@@ -12,13 +12,13 @@
 set -euo pipefail
 
 # ---- 配置（按需调整）----
-PACKAGE="dsh-skill-panel"
+PACKAGE="dsh-plugin-panel"
 SCOPE="@super_camel"
 PROFILE="${DSH_WEB_PROFILE_DIR:-$HOME/.dsh/profiles/web}"
-WS="${DSH_SKILL_PANEL_WS:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+WS="${DSH_PLUGIN_PANEL_WS:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 NM_DIR="$PROFILE/node_modules/$SCOPE"
 MOUNT="$NM_DIR/$PACKAGE"
-BACKUP="$NM_DIR/.dshp-skill-panel-real"
+BACKUP="$NM_DIR/.dshp-plugin-panel-real"
 
 log()  { printf '\033[36m[dshp-switch]\033[0m %s\n' "$*"; }
 die()  { printf '\033[31m[dshp-switch] ERROR: %s\033[0m %s\n' "$*" >&2; exit 1; }

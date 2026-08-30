@@ -16,7 +16,7 @@ flowchart LR
     subgraph PROD["生产环境 DSH_HOME=~/.dsh"]
         P["profiles/web/"]
         PB["cordis.patch.yml（裸 []）"]
-        PPKG["package.json<br/>dsh.profile.bundles:<br/>dsh-base + dsh-web-app<br/>+ dsh-skill-panel(npm)<br/>+ ds-harness-remote"]
+        PPKG["package.json<br/>dsh.profile.bundles:<br/>dsh-base + dsh-web-app<br/>+ dsh-plugin-panel(npm)<br/>+ ds-harness-remote"]
         PC[".credentials.yaml / settings.yaml（生产真实值）"]
         PS["sessions/ · .skill-pool/ · skills/"]
         P --> PB
@@ -30,7 +30,7 @@ flowchart LR
     subgraph DEV["开发环境 DSH_HOME=<仓库>/.dsh-dev"]
         DV["profiles/web/（官方模板，与生产同组合）"]
         DVPATCH["cordis.patch.yml:<br/>- settings: config.path → 生产 settings.yaml<br/>- credentials: config.path → 生产 .credentials.yaml"]
-        DVN["node_modules/（dsh-skill-panel 真副本）"]
+        DVN["node_modules/（dsh-plugin-panel 真副本）"]
         DV --> DVPATCH
         DV --> DVN
     end

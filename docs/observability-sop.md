@@ -1,4 +1,4 @@
-# 可观测性 SOP：dshp-skill-panel 日志与调试
+# 可观测性 SOP：dshp-plugin-panel 日志与调试
 
 > 配套 ADR-0009（日志系统）、ADR-0010（调试器）。
 > **受众：AI agent（LLM）。** 本文档写给 agent 排查插件自身错误用，不是给人看的操作手册。
@@ -8,7 +8,7 @@
 
 ## 0. 角色定位：这是 agent 的诊断协议
 
-你（一个 agent）在排查 dshp-skill-panel 时，**遵循本协议**。它不是给人类工程师的舒适阅读材料：
+你（一个 agent）在排查 dshp-plugin-panel 时，**遵循本协议**。它不是给人类工程师的舒适阅读材料：
 
 - **命令输出是可解析的**：默认文本给人扫，`--json` 给你精确解析。
 - **一致性自检已经替你算了结论**：脚本不只 dump 原始状态，还把"哪里不对"直接算出来。
@@ -25,7 +25,7 @@
         ▼
    installPanelLogging(ctx)                ← init 注册一次
    ├─ 控制台（肉眼/宿主日志）
-   ├─ JSON Lines 文件  <dshHome>/.dshp-skill-panel.log   ← debug 脚本读它
+   ├─ JSON Lines 文件  <dshHome>/.dshp-plugin-panel.log   ← debug 脚本读它
    └─ 内存缓冲 500 条（recentLogs()，不进文件）
 ```
 
@@ -40,12 +40,12 @@
 | 项 | 约束 | 含义 |
 |----|------|------|
 | **Node 版本** | ≥ 22.6 | `--experimental-strip-types` 需要 22.6+（v22.23 验证通过） |
-| **运行目录** | 必须 `dshp-skill-panel` **源码 git 检出** | `scripts/` + `src/` **不发布到 npm**（`files` 只有 `lib/`），已安装的 bundle 里没有 |
+| **运行目录** | 必须 `dshp-plugin-panel` **源码 git 检出** | `scripts/` + `src/` **不发布到 npm**（`files` 只有 `lib/`），已安装的 bundle 里没有 |
 | **是否需装依赖** | 否 | debug 只 import node 内建 + 本地 `src/`，裸检出即可跑，无需 `node_modules` |
 | **宿主是否必须在跑** | 否 | 独立进程，宿主宕机也能跑；代价是读不到内存态 |
 | **$DSH_HOME 一致性** | 双端一致 | 环境变量同时改插件与脚本的 dshHome；**别只在一端设置**，否则"插件写 A、脚本读 B" |
 
-> **一句话**：从 `dshp-skill-panel` 的 git 检出里跑，用 Node ≥ 22.6，不要依赖已安装的 npm 包。
+> **一句话**：从 `dshp-plugin-panel` 的 git 检出里跑，用 Node ≥ 22.6，不要依赖已安装的 npm 包。
 
 ---
 
@@ -98,7 +98,7 @@ DSH_HOME=/custom/dsh node --experimental-strip-types scripts/debug-dump.ts
 
 ## 5. 埋点规范（写代码的 agent 也要遵守）
 
-- **只用命名 logger**，禁裸 `console.*`。子系统名：`skill-panel`/`pool`/`store`/`mcp`/`plugin-manager`。
+- **只用命名 logger**，禁裸 `console.*`。子系统名：`plugin-panel`/`pool`/`store`/`mcp`/`plugin-manager`。
 - **级别**：`error`=功能失败；`warn`=可降级；`info`=核心业务事件；`debug`=细节。调试器只提取 error/warn，级别错了 agent 看不到。
 - **参数**：Error 让 `formatArgs` 取 `stack`（别 `String(err)` 丢堆栈）；对象 JSON 化，别拼长串。
 - **新增日志前**：这条会出现在 debug/面板里并被需要吗？不会就**别加**（噪音）。
@@ -109,7 +109,7 @@ DSH_HOME=/custom/dsh node --experimental-strip-types scripts/debug-dump.ts
 ## 6. 边界
 
 - **只看落盘、不看内存**：读不到 WeakMap 句柄/fiber。内存态需宿主内导出面——目前
-  `POST /skill-panel/sessions`（`ctx.agents.list()`/`roots()`）是唯一只读枚举端点，给 live session id。
+  `POST /plugin-panel/sessions`（`ctx.agents.list()`/`roots()`）是唯一只读枚举端点，给 live session id。
 - **文件固定、追加、不轮转**：不自动清理。
 - **写失败静默降级**：日志系统不因磁盘故障中断宿主。
 - **宿主需重启才加载新 bundle**：改源码重构建后 dev mount 宿主要重启（`lib/index.js` 是构建产物）。

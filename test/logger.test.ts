@@ -19,19 +19,19 @@ import {
 const testRoot = join(fileURLToPath(new URL('.', import.meta.url)), '.tmp', 'logger-test')
 mkdirSync(testRoot, { recursive: true })
 
-test('defaultLogFile: $DSH_HOME 优先推导 <dshHome>/.dshp-skill-panel.log', () => {
+test('defaultLogFile: $DSH_HOME 优先推导 <dshHome>/.dshp-plugin-panel.log', () => {
   const home = join(testRoot, 'home-x')
   const file = defaultLogFile({ DSH_HOME: home })
-  assert.equal(file, join(home, '.dshp-skill-panel.log'))
+  assert.equal(file, join(home, '.dshp-plugin-panel.log'))
 })
 
 test('defaultLogFile: 空白 $DSH_HOME 视为未设置（回退 homedir/.dsh）', () => {
   const file = defaultLogFile({ DSH_HOME: '   ' })
-  assert.equal(file.endsWith(join('.dsh', '.dshp-skill-panel.log')), true)
+  assert.equal(file.endsWith(join('.dsh', '.dshp-plugin-panel.log')), true)
 })
 
 test('installPanelLogging: 注册 3 个 exporter，文件写 JSON Lines 正确', () => {
-  const logFile = join(testRoot, 'log', '.dshp-skill-panel.log')
+  const logFile = join(testRoot, 'log', '.dshp-plugin-panel.log')
   // 捕获全部注册的 exporter，逐一喂 message，验证其中文件 sink 写 JSON Lines。
   const exporters: Array<{ export: (m: unknown) => void }> = []
   const collectingCtx = {
@@ -60,7 +60,7 @@ test('recentLogs: minLevel 语义正确（A1 回归：warn 含 error+warn，不�
   const collectingCtx = {
     logger: { exporter: (exporter: unknown) => { exporters.push(exporter as { export: (m: unknown) => void }); return () => {} } },
   }
-  installPanelLogging(collectingCtx as never, { logFile: join(testRoot, 'log2', '.dshp-skill-panel.log') })
+  installPanelLogging(collectingCtx as never, { logFile: join(testRoot, 'log2', '.dshp-plugin-panel.log') })
   const buf = exporters[2] // 第三个是缓冲 exporter
   const levels: Array<[string, number]> = [['error', 0], ['info', 1], ['warn', 2], ['debug', 3]]
   for (const [lv, level] of levels) buf.export({ ts: 1, type: lv, level, name: 'x', args: ['m'] })

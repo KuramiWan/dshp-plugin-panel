@@ -1,20 +1,20 @@
-/** 设置页「技能面板」节（settings.section，ADR-0007）：全功能管理页，作用于当前会话。
+/** 设置页「插件面板」节（settings.section，ADR-0007）：全功能管理页，作用于当前会话。
  *  ADR-0008：页签从「技能 / MCP」变为「技能 / 插件」——MCP 折叠进插件页签。 */
 import { useState } from 'react'
-import type { SkillPanelLocaleDict } from './locale.ts'
-import { SkillPanelView } from './view.tsx'
-import { SkillPanelPluginView } from './plugin-view.tsx'
-import type { SkillPanelClient } from './api.ts'
+import type { PluginPanelLocaleDict } from './locale.ts'
+import { PluginPanelView } from './view.tsx'
+import { PluginPanelPluginView } from './plugin-view.tsx'
+import type { PluginPanelClient } from './api.ts'
 
-export interface SkillPanelSettingsSectionProps {
+export interface PluginPanelSettingsSectionProps {
   /** 标准 props：会话列表快照选择器（SessionListState.current 为当前会话）。 */
   useSessions?: (selector: (state: { current?: string }) => string | undefined) => string | undefined
   close?: () => void
-  client: SkillPanelClient | undefined
-  t: (key: keyof SkillPanelLocaleDict) => string
+  client: PluginPanelClient | undefined
+  t: (key: keyof PluginPanelLocaleDict) => string
 }
 
-export function SkillPanelSettingsSection(props: SkillPanelSettingsSectionProps) {
+export function PluginPanelSettingsSection(props: PluginPanelSettingsSectionProps) {
   const { useSessions, client, t } = props
   const [tab, setTab] = useState<'skills' | 'plugins'>('skills')
   // useSessions 可能未作为 prop 传入（settings.section 标准 props 未必全被 owner 传下）：
@@ -29,7 +29,7 @@ export function SkillPanelSettingsSection(props: SkillPanelSettingsSectionProps)
           className={tab === 'skills' ? 'dshp-tab dshp-tab-active' : 'dshp-tab'}
           onClick={() => setTab('skills')}
         >
-          {t('nav')}
+          {t('tab.skills')}
         </button>
         <button
           className={tab === 'plugins' ? 'dshp-tab dshp-tab-active' : 'dshp-tab'}
@@ -41,8 +41,8 @@ export function SkillPanelSettingsSection(props: SkillPanelSettingsSectionProps)
       {sessionId === undefined
         ? <div className="dshp-empty">{t('no.session')}</div>
         : tab === 'skills'
-          ? <SkillPanelView sessionId={sessionId} client={client} t={t} />
-          : <SkillPanelPluginView sessionId={sessionId} client={client} t={t} />}
+          ? <PluginPanelView sessionId={sessionId} client={client} t={t} />
+          : <PluginPanelPluginView sessionId={sessionId} client={client} t={t} />}
     </div>
   )
 }

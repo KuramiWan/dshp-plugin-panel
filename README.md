@@ -1,6 +1,6 @@
-# dshp-skill-panel
+# dshp-plugin-panel
 
-[![npm](https://img.shields.io/npm/v/@super_camel/dsh-skill-panel?style=flat-square&color=5B4CF0)](https://www.npmjs.com/package/@super_camel/dsh-skill-panel)
+[![npm](https://img.shields.io/npm/v/@super_camel/dsh-plugin-panel?style=flat-square&color=5B4CF0)](https://www.npmjs.com/package/@super_camel/dsh-plugin-panel)
 [![MIT](https://img.shields.io/badge/license-MIT-0B7285?style=flat-square)](LICENSE)
 [![DSH](https://img.shields.io/badge/DSH-Web-5B4CF0?style=flat-square)](cordis.patch.yml)
 
@@ -37,18 +37,18 @@
 ### 1. Install
 
 ```sh
-dsh plugin --profile web add @super_camel/dsh-skill-panel
+dsh plugin --profile web add @super_camel/dsh-plugin-panel
 ```
 
 Or install from source:
 
 ```sh
-dsh plugin --profile web add github:kuramiwan/dshp-skill-panel
+dsh plugin --profile web add github:kuramiwan/dshp-plugin-panel
 ```
 
 ### 2. Restart and open the panel
 
-Restart `dsh web`, then open **Settings → 技能面板 (Skill Panel)**. You get two tabs:
+Restart `dsh web`, then open **Settings → 插件面板 (Plugin Panel)**. You get two tabs:
 
 - **Skills** — the global layer, your available pool, and the current session's introduced set.
 - **Plugins** — the plugins DSH has loaded, plus session MCP.
@@ -142,7 +142,7 @@ flowchart LR
     subgraph Entrances["Three entrances"]
         Tools["Model tools<br/>session_skill_*"]
         Cmds["Slash commands<br/>/skill-*"]
-        Panel["Skill Panel"]
+        Panel["Plugin Panel"]
     end
     Entrances --> Session["Current session skill set<br/>isolated per session"]
     Session -->|"points back, no file copy"| Folders["Your skills<br/>local/ pool + global ~/.dsh/skills"]
@@ -174,7 +174,7 @@ pnpm debug --logs 20             # include up to 20 recent error/warn log lines
 
 > **Note:** The `pnpm debug` script is a dev/source tool. It is **not** shipped in the published npm bundle (which contains only `lib/index.js`, `lib/client.js`, and `cordis.patch.yml`) and requires Node ≥ 22.6 — clone the repo and run it from the source tree.
 
-Structured logs are appended to `<dshHome>/.dshp-skill-panel.log` (JSON Lines) via `ctx.logger`, so the debugger's error clues and the live host logs are the same data source.
+Structured logs are appended to `<dshHome>/.dshp-plugin-panel.log` (JSON Lines) via `ctx.logger`, so the debugger's error clues and the live host logs are the same data source.
 
 > **Agent guide**: the observability/debugging workflow (instrumentation rules, debugger protocol,
 > compatibility, and the 5-step diagnosis) is codified for AI agents in
@@ -218,7 +218,7 @@ at the production files (zero copy, zero symlinks).
 
 ```bash
 # 1. build the panel checkout (required once; lib/ is git-ignored)
-cd dshp-skill-panel && pnpm install && pnpm build
+cd dshp-plugin-panel && pnpm install && pnpm build
 
 # 2. create the dev root + mount the panel (official entry point:
 #    initProfile + pnpm add + reconcile bundles; `web` is the official

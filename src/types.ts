@@ -1,10 +1,10 @@
 /**
- * 技能面板 Remote 边界载荷类型（typert 生成严格 schema 的输入）。
+ * 插件面板 Remote 边界载荷类型（typert 生成严格 schema 的输入）。
  * 必须从非 root 的类型子路径（./types）导出——生成器约束，见 commands 包同款组织。
  * 全部保持简单可序列化；readonly 由生成器转 z.readonly()。
  */
 
-export interface SkillPanelBrowseEntry {
+export interface PluginPanelBrowseEntry {
   readonly name: string
   readonly description: string
   readonly introduced: boolean
@@ -12,37 +12,37 @@ export interface SkillPanelBrowseEntry {
   readonly tags: readonly string[]
 }
 
-export interface SkillPanelBrowseRequest {
+export interface PluginPanelBrowseRequest {
   readonly sessionId: string
   readonly query?: string
   readonly limit?: number
 }
 
-export interface SkillPanelBrowseResult {
-  readonly entries: readonly SkillPanelBrowseEntry[]
+export interface PluginPanelBrowseResult {
+  readonly entries: readonly PluginPanelBrowseEntry[]
 }
 
-export interface SkillPanelIntroducedSkill {
+export interface PluginPanelIntroducedSkill {
   readonly name: string
   readonly description?: string
   /** 会话引入的 tag 视图（从池/全局的 SKILL.md 读取；无则空数组）。 */
   readonly tags?: readonly string[]
 }
 
-export interface SkillPanelListRequest {
+export interface PluginPanelListRequest {
   readonly sessionId: string
 }
 
-export interface SkillPanelListResult {
-  readonly skills: readonly SkillPanelIntroducedSkill[]
+export interface PluginPanelListResult {
+  readonly skills: readonly PluginPanelIntroducedSkill[]
 }
 
-export interface SkillPanelDetailRequest {
+export interface PluginPanelDetailRequest {
   readonly sessionId: string
   readonly name: string
 }
 
-export type SkillPanelDetailResult =
+export type PluginPanelDetailResult =
   | {
     readonly ok: true
     readonly name: string
@@ -52,12 +52,12 @@ export type SkillPanelDetailResult =
   }
   | { readonly ok: false; readonly reason: string }
 
-export interface SkillPanelIntroduceRequest {
+export interface PluginPanelIntroduceRequest {
   readonly sessionId: string
   readonly name: string
 }
 
-export type SkillPanelIntroduceResult =
+export type PluginPanelIntroduceResult =
   | {
     readonly ok: true
     readonly name: string
@@ -68,56 +68,56 @@ export type SkillPanelIntroduceResult =
   }
   | { readonly ok: false; readonly reason: string }
 
-export interface SkillPanelRemoveRequest {
+export interface PluginPanelRemoveRequest {
   readonly sessionId: string
   readonly name: string
 }
 
-export type SkillPanelRemoveResult =
+export type PluginPanelRemoveResult =
   | { readonly ok: true; readonly name: string }
   | { readonly ok: false; readonly reason: string }
 
-export interface SkillPanelSetTagsRequest {
+export interface PluginPanelSetTagsRequest {
   readonly sessionId: string
   readonly name: string
   /** 完整 tags 列表（整体替换）；空数组 = 清除分组。 */
   readonly tags: readonly string[]
 }
 
-export type SkillPanelSetTagsResult =
+export type PluginPanelSetTagsResult =
   | { readonly ok: true; readonly name: string; readonly tags: readonly string[] }
   | { readonly ok: false; readonly reason: string }
 
 // ---- 全局激活池（user-dsh 层，进程级自动可见）管理 ----
 
 /** 全局激活池条目视图。 */
-export interface SkillPanelGlobalEntry {
+export interface PluginPanelGlobalEntry {
   readonly name: string
   readonly description: string
   /** frontmatter tags（跨池共享分组维度）。 */
   readonly tags: readonly string[]
 }
 
-export interface SkillPanelGlobalListRequest {
+export interface PluginPanelGlobalListRequest {
   readonly sessionId: string
 }
 
-export interface SkillPanelGlobalListResult {
-  readonly entries: readonly SkillPanelGlobalEntry[]
+export interface PluginPanelGlobalListResult {
+  readonly entries: readonly PluginPanelGlobalEntry[]
 }
 
-export interface SkillPanelGlobalActivateRequest {
+export interface PluginPanelGlobalActivateRequest {
   readonly sessionId: string
   readonly name: string
 }
 
-export type SkillPanelGlobalActivateResult =
+export type PluginPanelGlobalActivateResult =
   | { readonly ok: true; readonly name: string; readonly target: 'global' | 'pool' }
   | { readonly ok: false; readonly reason: string }
 
 // ---- 面板 MCP 管理边界载荷（会话级临时 MCP，7b 面板入口） ----
 
-export interface SkillPanelMcpEntry {
+export interface PluginPanelMcpEntry {
   readonly name: string
   readonly description?: string
   readonly transport: 'stdio' | 'streamable-http'
@@ -132,62 +132,62 @@ export interface SkillPanelMcpEntry {
   readonly connected?: boolean
 }
 
-export interface SkillPanelMcpListRequest {
+export interface PluginPanelMcpListRequest {
   readonly sessionId: string
 }
 
-export interface SkillPanelMcpListResult {
-  readonly entries: readonly SkillPanelMcpEntry[]
+export interface PluginPanelMcpListResult {
+  readonly entries: readonly PluginPanelMcpEntry[]
 }
 
-export interface SkillPanelMcpConnectRequest {
+export interface PluginPanelMcpConnectRequest {
   readonly sessionId: string
   readonly name: string
 }
 
-export type SkillPanelMcpConnectResult =
+export type PluginPanelMcpConnectResult =
   | { readonly ok: true; readonly name: string; readonly alreadyConnected: boolean }
   | { readonly ok: false; readonly reason: string }
 
-export interface SkillPanelMcpDisconnectRequest {
+export interface PluginPanelMcpDisconnectRequest {
   readonly sessionId: string
   readonly name: string
 }
 
-export type SkillPanelMcpDisconnectResult =
+export type PluginPanelMcpDisconnectResult =
   | { readonly ok: true; readonly name: string }
   | { readonly ok: false; readonly reason: string }
 
-export interface SkillPanelMcpWhitelistRequest {
+export interface PluginPanelMcpWhitelistRequest {
   readonly sessionId: string
 }
 
-export interface SkillPanelMcpWhitelistResult {
-  readonly servers: readonly SkillPanelMcpEntry[]
+export interface PluginPanelMcpWhitelistResult {
+  readonly servers: readonly PluginPanelMcpEntry[]
 }
 
-export interface SkillPanelMcpUpsertRequest {
+export interface PluginPanelMcpUpsertRequest {
   readonly sessionId: string
-  readonly server: SkillPanelMcpEntry
+  readonly server: PluginPanelMcpEntry
 }
 
-export type SkillPanelMcpUpsertResult =
+export type PluginPanelMcpUpsertResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: string }
 
-export interface SkillPanelMcpRemoveRequest {
+export interface PluginPanelMcpRemoveRequest {
   readonly sessionId: string
   readonly name: string
 }
 
-export type SkillPanelMcpRemoveResult =
+export type PluginPanelMcpRemoveResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: string }
 
 // ---- 发现与兼容（管理"已配置好的 MCP"，不创建/配置） ----
 
 /** 从 DSH 组合发现的、已配置好的 MCP 服务器（脱敏视图）。 */
-export interface SkillPanelMcpDiscovered {
+export interface PluginPanelMcpDiscovered {
   readonly name: string
   readonly transport: 'stdio' | 'streamable-http'
   readonly command?: string
@@ -201,41 +201,41 @@ export interface SkillPanelMcpDiscovered {
   readonly managed: boolean
 }
 
-export interface SkillPanelMcpDiscoverRequest {
+export interface PluginPanelMcpDiscoverRequest {
   readonly sessionId: string
 }
 
-export interface SkillPanelMcpDiscoverResult {
-  readonly entries: readonly SkillPanelMcpDiscovered[]
+export interface PluginPanelMcpDiscoverResult {
+  readonly entries: readonly PluginPanelMcpDiscovered[]
 }
 
-export interface SkillPanelMcpSelectRequest {
+export interface PluginPanelMcpSelectRequest {
   readonly sessionId: string
   readonly name: string
 }
 
-export type SkillPanelMcpSelectResult =
-  | { readonly ok: true; readonly entry: SkillPanelMcpDiscovered }
+export type PluginPanelMcpSelectResult =
+  | { readonly ok: true; readonly entry: PluginPanelMcpDiscovered }
   | { readonly ok: false; readonly reason: string }
 
-export interface SkillPanelMcpCheckRequest {
+export interface PluginPanelMcpCheckRequest {
   readonly sessionId: string
   readonly name: string
 }
 
-export type SkillPanelMcpCheckResult =
+export type PluginPanelMcpCheckResult =
   | { readonly ok: true; readonly toolCount: number; readonly serverName: string }
   | { readonly ok: false; readonly reason: string }
 
 // ---- 插件页签（宿主组合层，ADR-0008；MCP 折叠并入） ----
 
 /** 组合行来源：core（bundle / host 核心）| patch（活动 profile 用户插件行）| mcp（mcp-client 桥接）。 */
-export type SkillPanelPluginSource = 'core' | 'patch' | 'bundle' | 'mcp'
+export type PluginPanelPluginSource = 'core' | 'patch' | 'bundle' | 'mcp'
 
 /** 插件页签里的单个组合行视图。 */
-export interface SkillPanelPluginEntry {
+export interface PluginPanelPluginEntry {
   readonly id: string
-  readonly source: SkillPanelPluginSource
+  readonly source: PluginPanelPluginSource
   /** FiberState 数值；-1 = 已停用（记录在状态文件、不在 registry）。 */
   readonly state: number
   readonly active: boolean
@@ -253,57 +253,57 @@ export interface SkillPanelPluginEntry {
   }
 }
 
-export interface SkillPanelPluginListRequest {
+export interface PluginPanelPluginListRequest {
   readonly sessionId: string
 }
 
-export interface SkillPanelPluginListResult {
-  readonly plugins: readonly SkillPanelPluginEntry[]
+export interface PluginPanelPluginListResult {
+  readonly plugins: readonly PluginPanelPluginEntry[]
 }
 
-export interface SkillPanelPluginToggleRequest {
+export interface PluginPanelPluginToggleRequest {
   readonly sessionId: string
   readonly id: string
   /** true = 启用（重建 insert 行）；false = 停用（移除 insert 行）。 */
   readonly enabled: boolean
 }
 
-export type SkillPanelPluginToggleResult =
+export type PluginPanelPluginToggleResult =
   | { readonly ok: true; readonly id: string; readonly enabled: boolean }
   | { readonly ok: false; readonly reason: string }
 
-export interface SkillPanelPluginInstallRequest {
+export interface PluginPanelPluginInstallRequest {
   readonly sessionId: string
   readonly id: string
   readonly name: string
 }
 
-export type SkillPanelPluginInstallResult =
+export type PluginPanelPluginInstallResult =
   | { readonly ok: true; readonly id: string }
   | { readonly ok: false; readonly reason: string }
 
-export interface SkillPanelPluginPromoteRequest {
+export interface PluginPanelPluginPromoteRequest {
   readonly sessionId: string
   readonly id: string
 }
 
-export type SkillPanelPluginPromoteResult =
+export type PluginPanelPluginPromoteResult =
   | { readonly ok: true; readonly id: string; readonly restartRequired: true }
   | { readonly ok: false; readonly reason: string }
 
-export interface SkillPanelPluginDemoteRequest {
+export interface PluginPanelPluginDemoteRequest {
   readonly sessionId: string
   readonly id: string
 }
 
-export type SkillPanelPluginDemoteResult =
+export type PluginPanelPluginDemoteResult =
   | { readonly ok: true; readonly id: string; readonly restartRequired: true }
   | { readonly ok: false; readonly reason: string }
 
 // ---- 调试 / 枚举（ADR-0010 卡点打通）：列出宿主当前 live sessions ----
 
 /** 单个 live agent/session 的视图。 */
-export interface SkillPanelSessionEntry {
+export interface PluginPanelSessionEntry {
   /** agent/session 共享身份（= agent.id = session.id，供其它方法作 sessionId）。 */
   readonly sessionId: string
   /** AgentStatus：'idle' | 'running'。 */
@@ -312,12 +312,12 @@ export interface SkillPanelSessionEntry {
   readonly root: boolean
 }
 
-export interface SkillPanelSessionsRequest {
+export interface PluginPanelSessionsRequest {
   /** 可选：仅返回此 id 对应的条目（用于确认某会话是否 live）。 */
   readonly sessionId?: string
 }
 
-export interface SkillPanelSessionsResult {
-  readonly sessions: readonly SkillPanelSessionEntry[]
+export interface PluginPanelSessionsResult {
+  readonly sessions: readonly PluginPanelSessionEntry[]
 }
 

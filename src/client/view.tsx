@@ -1,5 +1,5 @@
 /**
- * 技能面板共享视图：三区布局——
+ * 插件面板共享视图：三区布局——
  * 「全局激活（user-dsh 层，进程级自动可见：停用 / 打 tag）」
  * 「可用池（用户自管内容：启用 / 引入 / 打 tag / 详情）」
  * 「本会话已引入（移除）」。
@@ -10,33 +10,33 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { SkillPanelLocaleDict } from './locale.ts'
-import type { SkillPanelClient } from './api.ts'
+import type { PluginPanelLocaleDict } from './locale.ts'
+import type { PluginPanelClient } from './api.ts'
 import type { PanelNotice } from './notice.ts'
 
-export interface SkillPanelBrowseEntry {
+export interface PluginPanelBrowseEntry {
   name: string
   description: string
   introduced: boolean
   tags: readonly string[]
 }
 
-export interface SkillPanelIntroducedSkill {
+export interface PluginPanelIntroducedSkill {
   name: string
   description?: string
   tags?: readonly string[]
 }
 
-export interface SkillPanelGlobalEntry {
+export interface PluginPanelGlobalEntry {
   name: string
   description: string
   tags: readonly string[]
 }
 
-export interface SkillPanelViewProps {
+export interface PluginPanelViewProps {
   sessionId: string
-  client: SkillPanelClient | undefined
-  t: (key: keyof SkillPanelLocaleDict) => string
+  client: PluginPanelClient | undefined
+  t: (key: keyof PluginPanelLocaleDict) => string
 }
 
 /** 条目统一视图：面板里三区都转成它来分组/展示。 */
@@ -48,11 +48,11 @@ interface SkillItem {
   badge?: 'global' | 'introduced'
 }
 
-export function SkillPanelView(props: SkillPanelViewProps) {
+export function PluginPanelView(props: PluginPanelViewProps) {
   const { sessionId, client, t } = props
-  const [entries, setEntries] = useState<SkillPanelBrowseEntry[] | null>(null)
-  const [globals, setGlobals] = useState<SkillPanelGlobalEntry[] | null>(null)
-  const [introduced, setIntroduced] = useState<SkillPanelIntroducedSkill[] | null>(null)
+  const [entries, setEntries] = useState<PluginPanelBrowseEntry[] | null>(null)
+  const [globals, setGlobals] = useState<PluginPanelGlobalEntry[] | null>(null)
+  const [introduced, setIntroduced] = useState<PluginPanelIntroducedSkill[] | null>(null)
   const [query, setQuery] = useState('')
   const [error, setError] = useState(false)
   const [busy, setBusy] = useState(false)

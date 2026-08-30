@@ -1,5 +1,5 @@
 /**
- * SkillPanelService —— 面板的 host 侧 HTTP 服务（发布方案一：webServer 路由 + fetch）。
+ * PluginPanelService —— 面板的 host 侧 HTTP 服务（发布方案一：webServer 路由 + fetch）。
  *
  * 5 个方法全部转发共享核心（actions.ts + pool.ts 只读层 + SessionSkillStore 会话句柄），
  * 与 session_skill_* 模型工具、/skill-* 斜杠命令三面同源（ADR-0007「三面同源」），不新增业务语义：
@@ -7,7 +7,7 @@
  * - introduce / remove / setTags / activate / deactivate 与命令/工具同一代码路径（幂等、会话隔离）。
  *
  * 通道：DSH 自带 webServer（同进程 HTTP，client 用相对路径 fetch）。
- * 端点：POST /skill-panel/<method>，body 为 JSON 载荷，响应为 JSON。
+ * 端点：POST /plugin-panel/<method>，body 为 JSON 载荷，响应为 JSON。
  * 方法：browse / list / detail / introduce / removeSkill / setTags / globalList /
  *       globalActivate / globalDeactivate + mcp*。
  *
@@ -32,56 +32,56 @@ import type { SessionSkillStore } from './handles.ts'
 import type { SessionMcpManager, McpServerTemplate } from './mcp-manager.ts'
 import type { PluginManager } from './plugin-manager.ts'
 import type {
-  SkillPanelBrowseEntry,
-  SkillPanelBrowseRequest,
-  SkillPanelBrowseResult,
-  SkillPanelDetailRequest,
-  SkillPanelDetailResult,
-  SkillPanelIntroduceRequest,
-  SkillPanelIntroduceResult,
-  SkillPanelListRequest,
-  SkillPanelListResult,
-  SkillPanelRemoveRequest,
-  SkillPanelRemoveResult,
-  SkillPanelSetTagsRequest,
-  SkillPanelSetTagsResult,
-  SkillPanelGlobalListRequest,
-  SkillPanelGlobalListResult,
-  SkillPanelGlobalActivateRequest,
-  SkillPanelGlobalActivateResult,
-  SkillPanelMcpListRequest,
-  SkillPanelMcpListResult,
-  SkillPanelMcpConnectRequest,
-  SkillPanelMcpConnectResult,
-  SkillPanelMcpDisconnectRequest,
-  SkillPanelMcpDisconnectResult,
-  SkillPanelMcpWhitelistRequest,
-  SkillPanelMcpWhitelistResult,
-  SkillPanelMcpUpsertRequest,
-  SkillPanelMcpUpsertResult,
-  SkillPanelMcpRemoveRequest,
-  SkillPanelMcpRemoveResult,
-  SkillPanelMcpDiscoverRequest,
-  SkillPanelMcpDiscoverResult,
-  SkillPanelMcpSelectRequest,
-  SkillPanelMcpSelectResult,
-  SkillPanelMcpCheckRequest,
-  SkillPanelMcpCheckResult,
-  SkillPanelPluginListRequest,
-  SkillPanelPluginListResult,
-  SkillPanelPluginToggleRequest,
-  SkillPanelPluginToggleResult,
-  SkillPanelPluginInstallRequest,
-  SkillPanelPluginInstallResult,
-  SkillPanelPluginPromoteRequest,
-  SkillPanelPluginPromoteResult,
-  SkillPanelPluginDemoteRequest,
-  SkillPanelPluginDemoteResult,
-  SkillPanelSessionsRequest,
-  SkillPanelSessionsResult,
+  PluginPanelBrowseEntry,
+  PluginPanelBrowseRequest,
+  PluginPanelBrowseResult,
+  PluginPanelDetailRequest,
+  PluginPanelDetailResult,
+  PluginPanelIntroduceRequest,
+  PluginPanelIntroduceResult,
+  PluginPanelListRequest,
+  PluginPanelListResult,
+  PluginPanelRemoveRequest,
+  PluginPanelRemoveResult,
+  PluginPanelSetTagsRequest,
+  PluginPanelSetTagsResult,
+  PluginPanelGlobalListRequest,
+  PluginPanelGlobalListResult,
+  PluginPanelGlobalActivateRequest,
+  PluginPanelGlobalActivateResult,
+  PluginPanelMcpListRequest,
+  PluginPanelMcpListResult,
+  PluginPanelMcpConnectRequest,
+  PluginPanelMcpConnectResult,
+  PluginPanelMcpDisconnectRequest,
+  PluginPanelMcpDisconnectResult,
+  PluginPanelMcpWhitelistRequest,
+  PluginPanelMcpWhitelistResult,
+  PluginPanelMcpUpsertRequest,
+  PluginPanelMcpUpsertResult,
+  PluginPanelMcpRemoveRequest,
+  PluginPanelMcpRemoveResult,
+  PluginPanelMcpDiscoverRequest,
+  PluginPanelMcpDiscoverResult,
+  PluginPanelMcpSelectRequest,
+  PluginPanelMcpSelectResult,
+  PluginPanelMcpCheckRequest,
+  PluginPanelMcpCheckResult,
+  PluginPanelPluginListRequest,
+  PluginPanelPluginListResult,
+  PluginPanelPluginToggleRequest,
+  PluginPanelPluginToggleResult,
+  PluginPanelPluginInstallRequest,
+  PluginPanelPluginInstallResult,
+  PluginPanelPluginPromoteRequest,
+  PluginPanelPluginPromoteResult,
+  PluginPanelPluginDemoteRequest,
+  PluginPanelPluginDemoteResult,
+  PluginPanelSessionsRequest,
+  PluginPanelSessionsResult,
 } from './types.ts'
 
-export interface SkillPanelServiceOptions {
+export interface PluginPanelServiceOptions {
   /** 池根目录；默认 ~/.dsh/.skill-pool */
   readonly poolRoot: string
   /** 会话引入句柄存储（插件实例共享）。 */
@@ -93,10 +93,10 @@ export interface SkillPanelServiceOptions {
 }
 
 /** 面板 host 服务：只读为主；写操作与命令/工具同路径。 */
-export class SkillPanelService {
+export class PluginPanelService {
   // webServer 是 host 侧就绪较晚的服务：放进 inject 让 Cordis 等它就绪后再构造本服务，
-  // 保证 /skill-panel 路由必然注册。切勿改成可选 ctx.get('webServer') + 空则 return ——
-  // 那会让路由在首帧静默跳过，/skill-panel/<method> 命中 frontend-static 回退而 405。
+  // 保证 /plugin-panel 路由必然注册。切勿改成可选 ctx.get('webServer') + 空则 return ——
+  // 那会让路由在首帧静默跳过，/plugin-panel/<method> 命中 frontend-static 回退而 405。
   static inject = ['agents', 'skills', 'webServer']
 
   private readonly ctx: Context
@@ -105,7 +105,7 @@ export class SkillPanelService {
   private readonly mcp: SessionMcpManager
   private readonly plugins: PluginManager
 
-  constructor(ctx: Context, options: SkillPanelServiceOptions) {
+  constructor(ctx: Context, options: PluginPanelServiceOptions) {
     this.ctx = ctx
     this.poolRoot = options.poolRoot
     this.store = options.store
@@ -114,9 +114,9 @@ export class SkillPanelService {
 
     ctx.effect(() => ctx.webServer.register({
       kind: 'prefix',
-      path: '/skill-panel',
+      path: '/plugin-panel',
       handler: (req: IncomingMessage, res: ServerResponse) => void this.dispatch(req, res),
-    }), 'skill-panel: /skill-panel router')
+    }), 'plugin-panel: /plugin-panel router')
   }
 
   private agentOf(sessionId: string): Agent {
@@ -127,14 +127,14 @@ export class SkillPanelService {
     return agent
   }
 
-  /** 路由分发：POST /skill-panel/<method>，body 为 JSON 载荷。 */
+  /** 路由分发：POST /plugin-panel/<method>，body 为 JSON 载荷。 */
   private async dispatch(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
       if (req.method !== 'POST') {
         this.send(res, 405, { ok: false, reason: 'method not allowed, use POST' })
         return
       }
-      const url = req.url ?? '/skill-panel/'
+      const url = req.url ?? '/plugin-panel/'
       const method = this.pathMethod(url)
       if (method === undefined) {
         this.send(res, 404, { ok: false, reason: 'unknown endpoint' })
@@ -146,76 +146,76 @@ export class SkillPanelService {
       let result: unknown
       switch (method) {
         case 'browse':
-          result = this.browse(payload as unknown as SkillPanelBrowseRequest)
+          result = this.browse(payload as unknown as PluginPanelBrowseRequest)
           break
         case 'list':
-          result = await this.list(payload as unknown as SkillPanelListRequest)
+          result = await this.list(payload as unknown as PluginPanelListRequest)
           break
         case 'detail':
-          result = this.detail(payload as unknown as SkillPanelDetailRequest)
+          result = this.detail(payload as unknown as PluginPanelDetailRequest)
           break
         case 'introduce':
-          result = await this.introduce(payload as unknown as SkillPanelIntroduceRequest)
+          result = await this.introduce(payload as unknown as PluginPanelIntroduceRequest)
           break
         case 'removeSkill':
-          result = this.removeSkill(payload as unknown as SkillPanelRemoveRequest)
+          result = this.removeSkill(payload as unknown as PluginPanelRemoveRequest)
           break
         case 'setTags':
-          result = this.setTags(payload as unknown as SkillPanelSetTagsRequest)
+          result = this.setTags(payload as unknown as PluginPanelSetTagsRequest)
           break
         case 'globalList':
-          result = this.globalList(payload as unknown as SkillPanelGlobalListRequest)
+          result = this.globalList(payload as unknown as PluginPanelGlobalListRequest)
           break
         case 'globalActivate':
-          result = this.globalActivate(payload as unknown as SkillPanelGlobalActivateRequest)
+          result = this.globalActivate(payload as unknown as PluginPanelGlobalActivateRequest)
           break
         case 'globalDeactivate':
-          result = this.globalDeactivate(payload as unknown as SkillPanelGlobalActivateRequest)
+          result = this.globalDeactivate(payload as unknown as PluginPanelGlobalActivateRequest)
           break
         case 'mcpList':
-          result = this.mcpList(payload as unknown as SkillPanelMcpListRequest)
+          result = this.mcpList(payload as unknown as PluginPanelMcpListRequest)
           break
         case 'mcpConnect':
-          result = await this.mcpConnect(payload as unknown as SkillPanelMcpConnectRequest)
+          result = await this.mcpConnect(payload as unknown as PluginPanelMcpConnectRequest)
           break
         case 'mcpDisconnect':
-          result = this.mcpDisconnect(payload as unknown as SkillPanelMcpDisconnectRequest)
+          result = this.mcpDisconnect(payload as unknown as PluginPanelMcpDisconnectRequest)
           break
         case 'mcpWhitelist':
-          result = this.mcpWhitelist(payload as unknown as SkillPanelMcpWhitelistRequest)
+          result = this.mcpWhitelist(payload as unknown as PluginPanelMcpWhitelistRequest)
           break
         case 'mcpUpsert':
-          result = this.mcpUpsert(payload as unknown as SkillPanelMcpUpsertRequest)
+          result = this.mcpUpsert(payload as unknown as PluginPanelMcpUpsertRequest)
           break
         case 'mcpRemove':
-          result = this.mcpRemove(payload as unknown as SkillPanelMcpRemoveRequest)
+          result = this.mcpRemove(payload as unknown as PluginPanelMcpRemoveRequest)
           break
         case 'mcpDiscover':
-          result = this.mcpDiscover(payload as unknown as SkillPanelMcpDiscoverRequest)
+          result = this.mcpDiscover(payload as unknown as PluginPanelMcpDiscoverRequest)
           break
         case 'mcpSelect':
-          result = this.mcpSelect(payload as unknown as SkillPanelMcpSelectRequest)
+          result = this.mcpSelect(payload as unknown as PluginPanelMcpSelectRequest)
           break
         case 'mcpCheck':
-          result = await this.mcpCheck(payload as unknown as SkillPanelMcpCheckRequest)
+          result = await this.mcpCheck(payload as unknown as PluginPanelMcpCheckRequest)
           break
         case 'pluginList':
-          result = this.pluginList(payload as unknown as SkillPanelPluginListRequest)
+          result = this.pluginList(payload as unknown as PluginPanelPluginListRequest)
           break
         case 'pluginToggle':
-          result = await this.pluginToggle(payload as unknown as SkillPanelPluginToggleRequest)
+          result = await this.pluginToggle(payload as unknown as PluginPanelPluginToggleRequest)
           break
         case 'pluginInstall':
-          result = this.pluginInstall(payload as unknown as SkillPanelPluginInstallRequest)
+          result = this.pluginInstall(payload as unknown as PluginPanelPluginInstallRequest)
           break
         case 'pluginPromote':
-          result = this.pluginPromote(payload as unknown as SkillPanelPluginPromoteRequest)
+          result = this.pluginPromote(payload as unknown as PluginPanelPluginPromoteRequest)
           break
         case 'pluginDemote':
-          result = this.pluginDemote(payload as unknown as SkillPanelPluginDemoteRequest)
+          result = this.pluginDemote(payload as unknown as PluginPanelPluginDemoteRequest)
           break
         case 'sessions':
-          result = this.sessions(payload as unknown as SkillPanelSessionsRequest)
+          result = this.sessions(payload as unknown as PluginPanelSessionsRequest)
           break
         default:
           this.send(res, 404, { ok: false, reason: `unknown method "${method}"` })
@@ -228,8 +228,8 @@ export class SkillPanelService {
   }
 
   private pathMethod(rawUrl: string): string | undefined {
-    // /skill-panel/browse -> browse
-    const m = rawUrl.match(/^\/skill-panel\/([a-zA-Z_]+)\/?$/)
+    // /plugin-panel/browse -> browse
+    const m = rawUrl.match(/^\/plugin-panel\/([a-zA-Z_]+)\/?$/)
     return m === null ? undefined : m[1]
   }
 
@@ -248,17 +248,17 @@ export class SkillPanelService {
   }
 
   /** 池浏览（local 全量），支持关键词过滤。 */
-  browse(request: SkillPanelBrowseRequest): SkillPanelBrowseResult {
+  browse(request: PluginPanelBrowseRequest): PluginPanelBrowseResult {
     const agent = this.agentOf(request.sessionId)
     const items = filterBrowse(browsePool(this.poolRoot, agent, this.store), {
       query: request.query,
     })
     const limit = typeof request.limit === 'number' ? Math.max(1, Math.floor(request.limit)) : 100
-    return { entries: items.slice(0, limit) as SkillPanelBrowseEntry[] }
+    return { entries: items.slice(0, limit) as PluginPanelBrowseEntry[] }
   }
 
   /** 当前会话已引入清单（含 tags 视图：从池/全局 SKILL.md 读取）。 */
-  async list(request: SkillPanelListRequest): Promise<SkillPanelListResult> {
+  async list(request: PluginPanelListRequest): Promise<PluginPanelListResult> {
     const agent = this.agentOf(request.sessionId)
     const names = this.store.names(agent)
     if (names.length === 0) return { skills: [] }
@@ -284,7 +284,7 @@ export class SkillPanelService {
   }
 
   /** 单个技能的完整定义（名称/说明/适用场景/正文）。 */
-  detail(request: SkillPanelDetailRequest): SkillPanelDetailResult {
+  detail(request: PluginPanelDetailRequest): PluginPanelDetailResult {
     const entry = findPoolEntry(this.poolRoot, request.name)
     if (entry === undefined) return { ok: false, reason: `池中未找到 "${request.name}"` }
     const def = readSkillContent(entry)
@@ -299,7 +299,7 @@ export class SkillPanelService {
   }
 
   /** 从池引入到当前会话（幂等；纯会话注册，会话引入集已记录；同名影子覆盖仅本会话）。 */
-  async introduce(request: SkillPanelIntroduceRequest): Promise<SkillPanelIntroduceResult> {
+  async introduce(request: PluginPanelIntroduceRequest): Promise<PluginPanelIntroduceResult> {
     const agent = this.agentOf(request.sessionId)
     const result = await introduceSkill(this.ctx, this.poolRoot, this.store, agent, request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
@@ -313,7 +313,7 @@ export class SkillPanelService {
   }
 
   /** 从当前会话移除（幂等；未引入时报错）。方法名避开 RemoteNamespaceService 保留名（remove 冲突）。 */
-  removeSkill(request: SkillPanelRemoveRequest): SkillPanelRemoveResult {
+  removeSkill(request: PluginPanelRemoveRequest): PluginPanelRemoveResult {
     const agent = this.agentOf(request.sessionId)
     const result = removeSkill(this.store, agent, request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
@@ -321,7 +321,7 @@ export class SkillPanelService {
   }
 
   /** 打 tag（跨池共享分组）：写技能 SKILL.md frontmatter 的 tags 字段（整体替换）。 */
-  setTags(request: SkillPanelSetTagsRequest): SkillPanelSetTagsResult {
+  setTags(request: PluginPanelSetTagsRequest): PluginPanelSetTagsResult {
     this.agentOf(request.sessionId)
     const result = setSkillTags(this.poolRoot, request.name, request.tags)
     if (!result.ok) return { ok: false, reason: result.reason }
@@ -329,14 +329,14 @@ export class SkillPanelService {
   }
 
   /** 全局激活池（user-dsh 层）清单：进程级自动可见的技能（含 tags）。 */
-  globalList(request: SkillPanelGlobalListRequest): SkillPanelGlobalListResult {
+  globalList(request: PluginPanelGlobalListRequest): PluginPanelGlobalListResult {
     this.agentOf(request.sessionId)
     const root = defaultGlobalSkillsRoot()
     return { entries: listGlobalEntries(root).map(e => ({ name: e.name, description: e.description, tags: e.tags })) }
   }
 
   /** 启用：可用池 → 全局激活池（user-dsh 层，进程级自动可见）。 */
-  globalActivate(request: SkillPanelGlobalActivateRequest): SkillPanelGlobalActivateResult {
+  globalActivate(request: PluginPanelGlobalActivateRequest): PluginPanelGlobalActivateResult {
     this.agentOf(request.sessionId)
     const result = activateGlobal(this.poolRoot, request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
@@ -344,7 +344,7 @@ export class SkillPanelService {
   }
 
   /** 停用：全局激活池 → 可用池 local/（不再进程级自动可见，内容保留）。 */
-  globalDeactivate(request: SkillPanelGlobalActivateRequest): SkillPanelGlobalActivateResult {
+  globalDeactivate(request: PluginPanelGlobalActivateRequest): PluginPanelGlobalActivateResult {
     this.agentOf(request.sessionId)
     const result = deactivateGlobal(this.poolRoot, request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
@@ -352,13 +352,13 @@ export class SkillPanelService {
   }
 
   /** 会话 MCP：当前会话已连 server + 白名单候选视图。 */
-  mcpList(request: SkillPanelMcpListRequest): SkillPanelMcpListResult {
+  mcpList(request: PluginPanelMcpListRequest): PluginPanelMcpListResult {
     const agent = this.agentOf(request.sessionId)
     return { entries: this.mcp.views(agent) }
   }
 
   /** 会话 MCP：从白名单连一个 server 到当前会话（幂等）。 */
-  async mcpConnect(request: SkillPanelMcpConnectRequest): Promise<SkillPanelMcpConnectResult> {
+  async mcpConnect(request: PluginPanelMcpConnectRequest): Promise<PluginPanelMcpConnectResult> {
     const agent = this.agentOf(request.sessionId)
     const result = await this.mcp.connect(agent, request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
@@ -366,7 +366,7 @@ export class SkillPanelService {
   }
 
   /** 会话 MCP：断开当前会话的一个 server（幂等）。 */
-  mcpDisconnect(request: SkillPanelMcpDisconnectRequest): SkillPanelMcpDisconnectResult {
+  mcpDisconnect(request: PluginPanelMcpDisconnectRequest): PluginPanelMcpDisconnectResult {
     const agent = this.agentOf(request.sessionId)
     const result = this.mcp.disconnect(agent, request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
@@ -374,7 +374,7 @@ export class SkillPanelService {
   }
 
   /** 会话 MCP：白名单全文（候选模板，非会话维度；不透出 env/headers 等敏感字段）。 */
-  mcpWhitelist(_request: SkillPanelMcpWhitelistRequest): SkillPanelMcpWhitelistResult {
+  mcpWhitelist(_request: PluginPanelMcpWhitelistRequest): PluginPanelMcpWhitelistResult {
     const servers = this.mcp.whitelist().map(s => ({
       name: s.name,
       ...(s.description === undefined ? {} : { description: s.description }),
@@ -387,27 +387,27 @@ export class SkillPanelService {
   }
 
   /** 会话 MCP：新增/覆盖一条白名单候选（8b）。 */
-  mcpUpsert(request: SkillPanelMcpUpsertRequest): SkillPanelMcpUpsertResult {
+  mcpUpsert(request: PluginPanelMcpUpsertRequest): PluginPanelMcpUpsertResult {
     const result = this.mcp.upsertTemplate(request.server as McpServerTemplate)
     if (!result.ok) return { ok: false, reason: result.reason }
     return { ok: true }
   }
 
   /** 会话 MCP：删除一条白名单候选（8b）。 */
-  mcpRemove(request: SkillPanelMcpRemoveRequest): SkillPanelMcpRemoveResult {
+  mcpRemove(request: PluginPanelMcpRemoveRequest): PluginPanelMcpRemoveResult {
     const result = this.mcp.removeTemplate(request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
     return { ok: true }
   }
 
   /** 发现：从 DSH 组合枚举已配置的 MCP 插件（不创建/配置，只读发现）。 */
-  mcpDiscover(request: SkillPanelMcpDiscoverRequest): SkillPanelMcpDiscoverResult {
+  mcpDiscover(request: PluginPanelMcpDiscoverRequest): PluginPanelMcpDiscoverResult {
     this.agentOf(request.sessionId)
     return { entries: this.mcp.discover() }
   }
 
   /** 管理范围：把发现的某个已配置 MCP 加入白名单（服务端整体复制配置，含 secrets，不回显）。 */
-  mcpSelect(request: SkillPanelMcpSelectRequest): SkillPanelMcpSelectResult {
+  mcpSelect(request: PluginPanelMcpSelectRequest): PluginPanelMcpSelectResult {
     this.agentOf(request.sessionId)
     const result = this.mcp.select(request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
@@ -415,7 +415,7 @@ export class SkillPanelService {
   }
 
   /** 兼容检查：真连一次该 server + 拉工具清单 + 断开，报工具数与列出的原因。 */
-  async mcpCheck(request: SkillPanelMcpCheckRequest): Promise<SkillPanelMcpCheckResult> {
+  async mcpCheck(request: PluginPanelMcpCheckRequest): Promise<PluginPanelMcpCheckResult> {
     const agent = this.agentOf(request.sessionId)
     const result = await this.mcp.check(agent, request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
@@ -423,7 +423,7 @@ export class SkillPanelService {
   }
 
   /** 插件盘点（宿主组合层；MCP 折叠并入，标注会话连接状态）。 */
-  pluginList(request: SkillPanelPluginListRequest): SkillPanelPluginListResult {
+  pluginList(request: PluginPanelPluginListRequest): PluginPanelPluginListResult {
     const agent = this.agentOf(request.sessionId)
     return { plugins: this.plugins.list(agent).map(p => ({
       id: p.id,
@@ -440,7 +440,7 @@ export class SkillPanelService {
   }
 
   /** 启停一个插件行（patch/bundle 写组合层；mcp 行连接/断开会话）。 */
-  async pluginToggle(request: SkillPanelPluginToggleRequest): Promise<SkillPanelPluginToggleResult> {
+  async pluginToggle(request: PluginPanelPluginToggleRequest): Promise<PluginPanelPluginToggleResult> {
     const agent = this.agentOf(request.sessionId)
     const result = request.enabled
       ? await this.plugins.enable(request.id, agent)
@@ -450,7 +450,7 @@ export class SkillPanelService {
   }
 
   /** 新增/启用一个用户插件（写一条 insert 行，id + 包名）。 */
-  pluginInstall(request: SkillPanelPluginInstallRequest): SkillPanelPluginInstallResult {
+  pluginInstall(request: PluginPanelPluginInstallRequest): PluginPanelPluginInstallResult {
     this.agentOf(request.sessionId)
     const result = this.plugins.install(request.id, request.name)
     if (!result.ok) return { ok: false, reason: result.reason }
@@ -458,7 +458,7 @@ export class SkillPanelService {
   }
 
   /** 把 bundle 行提升为 patch 行（热插拔；冷迁移，需重启一次）。 */
-  pluginPromote(request: SkillPanelPluginPromoteRequest): SkillPanelPluginPromoteResult {
+  pluginPromote(request: PluginPanelPluginPromoteRequest): PluginPanelPluginPromoteResult {
     this.agentOf(request.sessionId)
     const result = this.plugins.promoteToPatch(request.id)
     if (!result.ok) return { ok: false, reason: result.reason }
@@ -466,7 +466,7 @@ export class SkillPanelService {
   }
 
   /** 把 patch 行降级回 bundle 行（冷挂载；热→冷迁移，需重启一次）。 */
-  pluginDemote(request: SkillPanelPluginDemoteRequest): SkillPanelPluginDemoteResult {
+  pluginDemote(request: PluginPanelPluginDemoteRequest): PluginPanelPluginDemoteResult {
     this.agentOf(request.sessionId)
     const result = this.plugins.demoteToBundle(request.id)
     if (!result.ok) return { ok: false, reason: result.reason }
@@ -479,7 +479,7 @@ export class SkillPanelService {
    * 不要求 caller 预先知道 sessionId——枚举本身就是「不知道 id 才需要」。
    * 用 ctx.agents.list()（所有 live agents）+ roots()（顶层标记），不落盘、只读。
    */
-  sessions(request: SkillPanelSessionsRequest): SkillPanelSessionsResult {
+  sessions(request: PluginPanelSessionsRequest): PluginPanelSessionsResult {
     const roots = new Set(this.ctx.agents.roots().map(a => a.id))
     const all = this.ctx.agents.list().map(a => ({
       sessionId: String(a.id),

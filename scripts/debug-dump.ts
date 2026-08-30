@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * dshp-skill-panel 调试器（ADR-0010：独立可运行、只读）。
+ * dshp-plugin-panel 调试器（ADR-0010：独立可运行、只读）。
  *
  * 给 agent（LLM）排查插件自身错误用：一条命令 dump 插件状态 + 近期日志。
  * - 独立于宿主进程运行（宿主未启动也能跑），只读落盘状态，绝不改动任何文件。
@@ -145,7 +145,7 @@ function consistencyCheck(poolRoot: string, snapshots: SessionSnapshot[], logs: 
 
 function profileDirOf(root: string | undefined, dshHome: string): string {
   if (root !== undefined) return root
-  // 对齐 plugin-manager resolveProfileDir：找引用 dshp-skill-panel 的 profile，退回 web。
+  // 对齐 plugin-manager resolveProfileDir：找引用 dshp-plugin-panel 的 profile，退回 web。
   const profiles = join(dshHome, 'profiles')
   if (existsSync(profiles)) {
     for (const name of readdirSync(profiles)) {
@@ -153,7 +153,7 @@ function profileDirOf(root: string | undefined, dshHome: string): string {
       if (!existsSync(patch)) continue
       try {
         const text = readFileSync(patch, 'utf8')
-        if (text.includes('dshp-skill-panel')) return join(profiles, name)
+        if (text.includes('dshp-plugin-panel')) return join(profiles, name)
       } catch {
         // 忽略不可读 profile。
       }
@@ -175,7 +175,7 @@ function renderText(args: CliArgs): string {
   const issues = consistencyCheck(poolRoot, snapshots, logs)
 
   const out: string[] = []
-  out.push('# dshp-skill-panel 调试 dump')
+  out.push('# dshp-plugin-panel 调试 dump')
   out.push('')
   out.push('## 配置解析')
   out.push(`  DSH_HOME      : ${process.env.DSH_HOME?.trim() || '(未设置，用 ' + homedir() + sep + '.dsh)'}`)

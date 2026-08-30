@@ -1,5 +1,5 @@
 /**
- * session_mcp_* 模型工具（DSHP dshp-skill-panel 扩展；会话级临时 MCP 管理，7a 入口）。
+ * session_mcp_* 模型工具（DSHP dshp-plugin-panel 扩展；会话级临时 MCP 管理，7a 入口）。
  * - session_mcp_list：当前会话已连 server + 白名单候选（含可用与已连标记）。
  * - session_mcp_connect <name>：从白名单连一个 server 到当前会话（5a 隔离，tools 只对发起 agent 可见）。
  * - session_mcp_disconnect <name>：断开当前会话的一个 server（幂等）。

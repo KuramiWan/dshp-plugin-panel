@@ -1,5 +1,5 @@
 /**
- * 会话级临时 MCP 管理核心（DSHP dshp-skill-panel 扩展）。
+ * 会话级临时 MCP 管理核心（DSHP dshp-plugin-panel 扩展）。
  *
  * 设计（Q3a/Q5a/Q6a/Q8b/Q9 定稿）：
  * - 范围：会话级。连接挂到发起 agent 的 `agent.ctx`（Agent-scoped context），

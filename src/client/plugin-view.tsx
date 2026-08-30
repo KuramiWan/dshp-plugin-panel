@@ -10,15 +10,15 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { SkillPanelLocaleDict } from './locale.ts'
-import type { SkillPanelClient } from './api.ts'
-import type { SkillPanelPluginEntry, SkillPanelPluginSource, SkillPanelMcpDiscovered } from '../types.ts'
+import type { PluginPanelLocaleDict } from './locale.ts'
+import type { PluginPanelClient } from './api.ts'
+import type { PluginPanelPluginEntry, PluginPanelPluginSource, PluginPanelMcpDiscovered } from '../types.ts'
 import type { PanelNotice } from './notice.ts'
 
-export interface SkillPanelPluginViewProps {
+export interface PluginPanelPluginViewProps {
   sessionId: string
-  client: SkillPanelClient | undefined
-  t: (key: keyof SkillPanelLocaleDict) => string
+  client: PluginPanelClient | undefined
+  t: (key: keyof PluginPanelLocaleDict) => string
 }
 
 const SOURCE_LABEL = {
@@ -42,20 +42,20 @@ function stateKey(state: number): keyof typeof STATE_LABEL {
 }
 
 /** stdio = 沙箱外受信代码，连接/检查前需显式确认（信任闸）。 */
-function confirmStdio(transport: 'stdio' | 'streamable-http', t: (key: keyof SkillPanelLocaleDict) => string): boolean {
+function confirmStdio(transport: 'stdio' | 'streamable-http', t: (key: keyof PluginPanelLocaleDict) => string): boolean {
   if (transport !== 'stdio') return true
   return window.confirm(t('mcp.trust.stdio'))
 }
 
 /** patch 行停用 = 改 cordis.patch.yml + 触发热重载，可能影响宿主。弹窗二次确认。 */
-function confirmPatchDisable(t: (key: keyof SkillPanelLocaleDict) => string): boolean {
+function confirmPatchDisable(t: (key: keyof PluginPanelLocaleDict) => string): boolean {
   return window.confirm(t('plugin.confirm.disablePatch'))
 }
 
-export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
+export function PluginPanelPluginView(props: PluginPanelPluginViewProps) {
   const { sessionId, client, t } = props
-  const [plugins, setPlugins] = useState<SkillPanelPluginEntry[] | null>(null)
-  const [discovered, setDiscovered] = useState<SkillPanelMcpDiscovered[] | null>(null)
+  const [plugins, setPlugins] = useState<PluginPanelPluginEntry[] | null>(null)
+  const [discovered, setDiscovered] = useState<PluginPanelMcpDiscovered[] | null>(null)
   const [error, setError] = useState(false)
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState<string | null>(null)
@@ -132,7 +132,7 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
     })
   }
 
-  const runToggle = (entry: SkillPanelPluginEntry, enabled: boolean): void => {
+  const runToggle = (entry: PluginPanelPluginEntry, enabled: boolean): void => {
     // patch 停用 = 写 cordis.patch.yml + 触发热重载，写坏会中断宿主。弹窗确认。
     // bundle / mcp 不弹：bundle 已「需重启」红标 + 不走热重载；mcp 走 stdio 信任闸。
     if (!enabled && entry.source === 'patch' && !confirmPatchDisable(t)) return
@@ -157,11 +157,11 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
     )
   }
 
-  const runPromote = (entry: SkillPanelPluginEntry): void => {
+  const runPromote = (entry: PluginPanelPluginEntry): void => {
     runAction(() => client!.pluginPromote({ sessionId, id: entry.id }), (r) => `${t('plugin.notice.promoted')}: ${r.id}`)
   }
 
-  const runDemote = (entry: SkillPanelPluginEntry): void => {
+  const runDemote = (entry: PluginPanelPluginEntry): void => {
     runAction(() => client!.pluginDemote({ sessionId, id: entry.id }), (r) => `${t('plugin.notice.demoted')}: ${r.id}`)
   }
 
@@ -173,7 +173,7 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
     )
   }
 
-  const runCheck = (entry: SkillPanelPluginEntry): void => {
+  const runCheck = (entry: PluginPanelPluginEntry): void => {
     if (busy || checking !== null || client === undefined) return
     if (entry.mcp !== undefined && !confirmStdio(entry.mcp.transport, t)) return
     setChecking(entry.id)
@@ -189,7 +189,7 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
     }).catch((e) => { setChecking(null); setNotice({ kind: 'error', text: `${t('mcp.notice.failed')}: ${String(e)}` }) })
   }
 
-  const runRemoveMcp = (entry: SkillPanelPluginEntry): void => {
+  const runRemoveMcp = (entry: PluginPanelPluginEntry): void => {
     runAction(
       () => client!.mcpRemove({ sessionId, name: entry.id }),
       () => `${t('mcp.notice.removed')}: ${entry.id}`,
@@ -212,9 +212,9 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
   const list = plugins ?? []
   // 物理分组：按 source 分桶，搜索在桶内过滤。
   const q = query.trim().toLowerCase()
-  const matches = (p: SkillPanelPluginEntry): boolean =>
+  const matches = (p: PluginPanelPluginEntry): boolean =>
     q === '' || p.id.toLowerCase().includes(q) || (p.packageName ?? '').toLowerCase().includes(q)
-  const buckets: Record<Exclude<SkillPanelPluginSource, 'core'>, SkillPanelPluginEntry[]> = {
+  const buckets: Record<Exclude<PluginPanelPluginSource, 'core'>, PluginPanelPluginEntry[]> = {
     patch: list.filter(p => p.source === 'patch' && matches(p)),
     bundle: list.filter(p => p.source === 'bundle' && matches(p)),
     mcp: list.filter(p => p.source === 'mcp' && matches(p)),
@@ -224,7 +224,7 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
   const disc = discovered ?? []
 
   /** 渲染单行：name + 状态 + 操作置顶（head），来源/包名/MCP/保护标记放底部 meta 行。 */
-  const renderItem = (p: SkillPanelPluginEntry, key: string): ReactNode => {
+  const renderItem = (p: PluginPanelPluginEntry, key: string): ReactNode => {
     const sKey = stateKey(p.state)
     const headTag = sKey === 'active' ? 'dshp-tag dshp-tag-intro' : sKey === 'failed' ? 'dshp-tag dshp-tag-error' : 'dshp-tag'
     return (
@@ -282,7 +282,7 @@ export function SkillPanelPluginView(props: SkillPanelPluginViewProps) {
 
   /** 渲染一个可折叠来源 section：标题（带计数） + hint + 内容（行 / 空态）。 */
   const renderSection = (
-    source: Exclude<SkillPanelPluginSource, 'core'>,
+    source: Exclude<PluginPanelPluginSource, 'core'>,
     sectionKey: 'patch' | 'bundle' | 'mcp',
     open: boolean,
     setOpen: (next: boolean) => void,

@@ -1,5 +1,5 @@
 /**
- * DSHP 池读取层（规范源 standalone src/pool.ts；DSHP 的 plugin/dshp-skill-panel/src 为只读镜像）。
+ * DSHP 池读取层（规范源 standalone src/pool.ts；DSHP 的 plugin/dshp-plugin-panel/src 为只读镜像）。
  * 目录扫描 / SKILL.md frontmatter 解析。池 = 用户自管的唯一内容源：`local/` 下每个含 SKILL.md
  * 的目录即一份技能（放文件 = 加入管理），无订阅/生态/目录缓存/信任概念。
  * 分组（2026-08-19）：统一用技能自身 frontmatter 的 `tags` 字段，三池（全局激活 / 可用池 /

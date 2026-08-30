@@ -1,6 +1,6 @@
 # Test Fixtures（仓库内测试制品）
 
-本目录是 dshp-skill-panel 仓库内的测试用制品，供 DSH 的 **test profile**（`~/.dsh/profiles/test`）
+本目录是 dshp-plugin-panel 仓库内的测试用制品，供 DSH 的 **test profile**（`~/.dsh/profiles/test`）
 加载。环境差异由 **profile 配置**区分（web/dev/test 三个 profile 共用同一份代码），
 不用分支区分——本仓库只有 `main` 一个分支。
 

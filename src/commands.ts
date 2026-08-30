@@ -1,6 +1,6 @@
 /**
  * DSHP 会话级 Skill 的斜杠命令（人类直接调用，不经模型）：与 session_skill_* 模型工具、
- * 技能面板共享 actions.ts 核心逻辑（幂等、会话隔离、影子覆盖）。注册到 ctx.commands，
+ * 插件面板共享 actions.ts 核心逻辑（幂等、会话隔离、影子覆盖）。注册到 ctx.commands，
  * dsh web 输入框 `/` 菜单经 commands remote 自动发现。注册包 ctx.effect：随插件实例生命周期回收。
  * 池 = 用户自管的唯一内容源（local/）：无订阅/生态概念，全量可引入。
  */
