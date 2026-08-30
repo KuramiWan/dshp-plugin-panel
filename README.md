@@ -14,7 +14,7 @@
 
 > **Version note.** This README describes the current release. If a documented capability is missing in your build, check the installed version against the changelog in [CHANGELOG.md](CHANGELOG.md).
 
-![Skill Panel: the global layer, the available pool, and the current session's introduced set — all in one view](docs/assets/skills-overview.png)
+![Plugin Panel: the global layer, the available pool, and the current session's introduced set — all in one view](docs/assets/skills-overview.png)
 
 ## Highlights
 

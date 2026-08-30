@@ -14,7 +14,7 @@
 
 > **版本说明。** 本 README 描述当前发布版本。若你的安装里缺少文档中的某项能力，请对照 [CHANGELOG.md](CHANGELOG.md) 检查已安装版本。
 
-![技能面板：全局层、可用池、本会话已引入，三区一屏](docs/assets/skills-overview.png)
+![插件面板：全局层、可用池、本会话已引入，三区一屏](docs/assets/skills-overview.png)
 
 ## Highlights
 
