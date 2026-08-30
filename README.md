@@ -237,9 +237,11 @@ DSH_HOME="$PWD/.dsh-dev" dsh plugin --profile web add "$PWD"
 
 That's it. The wrapper scripts (`./dsh-dev`, `./dsh-test`) auto-complete on
 first run: the credentials/settings sharing patch (`config.path` → production
-`~/.dsh` files), and — for `./dsh-test` — the fixtures patch (dshp-test-plugin
-row + test-mcp-stdio MCP bridge row, copying the fixture package in as a real
-copy, no symlink).
+`~/.dsh` files), the `web-app` bundle guard (idempotently re-adds
+`@deepseek-ai/dsh-web-app` if the profile template ever omits it — prevents the
+silent-hang regression where the panel initializes with no web layer), and —
+for `./dsh-test` — the fixtures patch (dshp-test-plugin row + test-mcp-stdio
+MCP bridge row, copying the fixture package in as a real copy, no symlink).
 
 ### Daily usage — one command
 
