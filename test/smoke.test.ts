@@ -5,7 +5,7 @@
  *
  * 覆盖：
  *  - 三入口注册：5 个 session_skill_* 模型工具、5 个 /skill-* 斜杠命令、
- *    SkillPanelService 的 /skill-panel webServer 路由（kind=prefix、path 断言），全部注册成功；
+ *    PluginPanelService 的 /plugin-panel webServer 路由（kind=prefix、path 断言），全部注册成功；
  *  - 每入口一条核心链路：HTTP browse 经真实 node:http request/response 走通、
  *    /skill-browse 命令走通（经 commands.find）、模型工具 browse 走通；
  *  - 共享存储：工具/命令/面板三个入口操作的是同一个 SessionSkillStore
@@ -20,7 +20,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { applySessionSkillTools } from '../src/tools.ts'
 import { applySessionSkillCommands } from '../src/commands.ts'
-import { SkillPanelService } from '../src/skill-panel-service.ts'
+import { PluginPanelService } from '../src/plugin-panel-service.ts'
 import { SessionSkillStore } from '../src/handles.ts'
 import type { SessionMcpManager } from '../src/mcp-manager.ts'
 import type { PluginManager } from '../src/plugin-manager.ts'
@@ -58,7 +58,7 @@ function makeAgent(id: string): Agent {
  * - webServer：捕获路由 kind/path/handler（身份断言 + HTTP 冒烟）；
  * - agents：live 会话 + root 标记；skills.list 返回「会话已注册技能」视图（影子覆盖判定）；
  * - effect/plugin：立即执行（模拟 cordis 挂载，不做真生命周期管理）——
- *   SkillPanelService 经 ctx.plugin 挂载，镜像 src/index.ts 的装配序列。
+ *   PluginPanelService 经 ctx.plugin 挂载，镜像 src/index.ts 的装配序列。
  */
 function makeCtx(agent: Agent) {
   const tools = new Map<string, ToolDefinition>()
@@ -103,7 +103,7 @@ function makeCtx(agent: Agent) {
     },
   }
 
-  // plugin 桩：模拟 cordis 的 ctx.plugin 挂载（SkillPanelService 经此装配，镜像 src/index.ts）。
+  // plugin 桩：模拟 cordis 的 ctx.plugin 挂载（PluginPanelService 经此装配，镜像 src/index.ts）。
   ;(ctx as unknown as { plugin: (Service: unknown, opts: unknown) => void }).plugin = (Service, opts) => {
     void new (Service as new (c: unknown, o: unknown) => unknown)(ctx, opts)
   }
@@ -114,11 +114,11 @@ function makeCtx(agent: Agent) {
     commands,
     /** commands.find：命令注册表查找（UI 派发同路径），供命令冒烟用。 */
     find: (a: Agent, name: string) => commands.get(name),
-    /** 取捕获的 /skill-panel 路由（含身份断言）。 */
+    /** 取捕获的 /plugin-panel 路由（含身份断言）。 */
     handler: () => {
-      assert.ok(captured !== undefined, 'webServer.register 未被调用，/skill-panel 路由未注册')
-      assert.equal(captured.kind, 'prefix', '/skill-panel 路由应注册为 kind=prefix')
-      assert.equal(captured.path, '/skill-panel', 'webServer 路由 path 应为 /skill-panel')
+      assert.ok(captured !== undefined, 'webServer.register 未被调用，/plugin-panel 路由未注册')
+      assert.equal(captured.kind, 'prefix', '/plugin-panel 路由应注册为 kind=prefix')
+      assert.equal(captured.path, '/plugin-panel', 'webServer 路由 path 应为 /plugin-panel')
       return captured.handler
     },
   }
@@ -165,7 +165,7 @@ function makePool(names: string[]): string {
 
 /**
  * 把插件三入口整体挂到一个 fake ctx（等价于插件 init 的注册序列：
- * 工具注册 + 命令注册 + SkillPanelService 经 ctx.plugin 装配），
+ * 工具注册 + 命令注册 + PluginPanelService 经 ctx.plugin 装配），
  * 返回注册表 + store + HTTP handler，供各冒烟用例复用。
  */
 function mount(agent: Agent, poolRoot: string) {
@@ -176,11 +176,11 @@ function mount(agent: Agent, poolRoot: string) {
   const mcp = { views: () => [], whitelist: () => [] } as unknown as SessionMcpManager
   const plugins = { list: () => [] } as unknown as PluginManager
   const mountCtx = ctx as unknown as { plugin: (Service: unknown, opts: unknown) => void }
-  mountCtx.plugin(SkillPanelService, { poolRoot, store, mcp, plugins })
+  mountCtx.plugin(PluginPanelService, { poolRoot, store, mcp, plugins })
   return { store, tools, commands, find, handler }
 }
 
-test('冒烟：三入口全部注册成功（5 工具 + 5 命令 + /skill-panel 路由身份）', () => {
+test('冒烟：三入口全部注册成功（5 工具 + 5 命令 + /plugin-panel 路由身份）', () => {
   const root = makePool(['git'])
   try {
     const agent = makeAgent('s1')
@@ -191,7 +191,7 @@ test('冒烟：三入口全部注册成功（5 工具 + 5 命令 + /skill-panel 
     for (const name of ['skill-browse', 'skill-search', 'skill-list', 'skill-introduce', 'skill-remove']) {
       assert.ok(commands.has(name), `斜杠命令 /${name} 未注册`)
     }
-    // 路由注册成功：webServer.register 被调用，且注册的是 kind=prefix + path=/skill-panel
+    // 路由注册成功：webServer.register 被调用，且注册的是 kind=prefix + path=/plugin-panel
     assert.doesNotThrow(() => handler())
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -203,7 +203,7 @@ test('冒烟：面板入口 HTTP browse 经真实 node:http 请求走通', async
   try {
     const agent = makeAgent('s1')
     const { handler } = mount(agent, root)
-    const { status, body } = await send(handler(), makeReq('POST', '/skill-panel/browse', JSON.stringify({ sessionId: 's1' })))
+    const { status, body } = await send(handler(), makeReq('POST', '/plugin-panel/browse', JSON.stringify({ sessionId: 's1' })))
     assert.equal(status, 200)
     const data = JSON.parse(body) as { entries: Array<{ name: string }> }
     assert.deepEqual(data.entries.map(e => e.name).sort(), ['git', 'markdown'])
@@ -258,7 +258,7 @@ test('冒烟：引入/列出/移除完整会话流程经共享 store 互见（�
     assert.match((listRes as { text: string }).text, /git/)
 
     // 3) HTTP 面板 browse 看到 introduced 标记（同一 store）
-    const { status, body } = await send(handler(), makeReq('POST', '/skill-panel/browse', JSON.stringify({ sessionId: 's1' })))
+    const { status, body } = await send(handler(), makeReq('POST', '/plugin-panel/browse', JSON.stringify({ sessionId: 's1' })))
     assert.equal(status, 200)
     const data = JSON.parse(body) as { entries: Array<{ name: string; introduced: boolean }> }
     assert.equal(data.entries[0].name, 'git')

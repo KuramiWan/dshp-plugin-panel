@@ -4,12 +4,12 @@
  *   per-fiber 作用域），不重复造轮子。
  * - 注册 3 个 exporter（ADR-0009「JSON Lines 固定文件」）：
  *    1. 控制台 sink —— 保持现状可见性（替代裸 console 的可见性）；
- *    2. JSON Lines 文件 sink —— 追加写 `<dshHome>/.dshp-skill-panel.log`（调试器读它）；
+ *    2. JSON Lines 文件 sink —— 追加写 `<dshHome>/.dshp-plugin-panel.log`（调试器读它）；
  *    3. 缓冲 sink —— 内存保留最近 N 条（供面板/未来查询，`recentLogs()`）。
  * - `installPanelLogging(ctx)` 在插件 init 时调用一次，把 3 个 exporter 挂到当前 fiber
  *   （`ctx.logger.exporter` 内部以 ctx.effect 注册、随 fiber 回收）。
  *
- * 领域命名：子系统 logger 名 = `skill-panel` / `pool` / `store` / `mcp` / `plugin-manager`。
+ * 领域命名：子系统 logger 名 = `plugin-panel` / `pool` / `store` / `mcp` / `plugin-manager`。
  * 统一 `console` 的裸日志全部替换为命名 logger，使错误具备结构化字段可被调试脚本提取。
  */
 import type { Context } from '@deepseek-ai/cordis'
@@ -18,13 +18,13 @@ import { dirname, join } from 'node:path'
 import { defaultDshHome, type EnvLike } from './home.ts'
 
 /** 插件日志文件名（固定、追加、不轮转 —— 首版从简，ADR-0009）。 */
-export const LOG_FILE_NAME = '.dshp-skill-panel.log'
+export const LOG_FILE_NAME = '.dshp-plugin-panel.log'
 
 /** 缓冲 exporter 保留的近期日志条数上限。 */
 export const RECENT_LIMIT = 500
 
 /**
- * 日志文件默认位置：`<dshHome>/.dshp-skill-panel.log`。
+ * 日志文件默认位置：`<dshHome>/.dshp-plugin-panel.log`。
  * 选 `defaultDshHome()` 而非 profileDir：profileDir 需扫描 profiles 目录、非插件可导出；
  * dshHome 可由独立调试脚本用同一推导（home.ts）找到，保证「插件写、脚本读」同址。
  */

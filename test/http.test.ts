@@ -1,5 +1,5 @@
 /**
- * skill-panel-service HTTP 路由关键用例（D 路由层）。
+ * plugin-panel-service HTTP 路由关键用例（D 路由层）。
  * 用 fake ctx（agents/skills/webServer 桩）+ node:http 真实 request/response，
  * 验证 dispatch 协议：非 POST→405、未知端点→404、未知方法→404、非法 JSON→400、
  * 成功→200 JSON、方法分派转发到正确 handler。
@@ -12,7 +12,7 @@ import { PassThrough } from 'node:stream'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { SkillPanelService } from '../src/skill-panel-service.ts'
+import { PluginPanelService } from '../src/plugin-panel-service.ts'
 import { SessionSkillStore } from '../src/handles.ts'
 import type { SessionMcpManager } from '../src/mcp-manager.ts'
 import type { PluginManager } from '../src/plugin-manager.ts'
@@ -49,7 +49,7 @@ function makeService(poolRoot: string, liveSessions: string[], roots: string[] =
     },
     skills: { list: async () => [] },
   }
-  const service = new SkillPanelService(ctx as never, { poolRoot, store, mcp, plugins })
+  const service = new PluginPanelService(ctx as never, { poolRoot, store, mcp, plugins })
   return { captured, store }
 }
 
@@ -81,12 +81,12 @@ function send(captured: Captured, req: IncomingMessage): Promise<{ status: numbe
   })
 }
 
-test('路由注册: kind=prefix, path=/skill-panel（注入 webServer，勿改可选）', () => {
+test('路由注册: kind=prefix, path=/plugin-panel（注入 webServer，勿改可选）', () => {
   const root = mkdtempSync(join(testRoot, 'svc-'))
   try {
     const { captured } = makeService(root, ['s1'])
     assert.equal(captured.kind, 'prefix')
-    assert.equal(captured.path, '/skill-panel')
+    assert.equal(captured.path, '/plugin-panel')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -96,7 +96,7 @@ test('非 POST → 405', async () => {
   const root = mkdtempSync(join(testRoot, 'svc-'))
   try {
     const { captured } = makeService(root, ['s1'])
-    const { status } = await send(captured, makeReq('GET', '/skill-panel/browse'))
+    const { status } = await send(captured, makeReq('GET', '/plugin-panel/browse'))
     assert.equal(status, 405)
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -107,7 +107,7 @@ test('未知端点（无方法名）→ 404', async () => {
   const root = mkdtempSync(join(testRoot, 'svc-'))
   try {
     const { captured } = makeService(root, ['s1'])
-    const { status } = await send(captured, makeReq('POST', '/skill-panel/'))
+    const { status } = await send(captured, makeReq('POST', '/plugin-panel/'))
     assert.equal(status, 404)
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -118,7 +118,7 @@ test('未知方法名 → 404 unknown method', async () => {
   const root = mkdtempSync(join(testRoot, 'svc-'))
   try {
     const { captured } = makeService(root, ['s1'])
-    const { status, body } = await send(captured, makeReq('POST', '/skill-panel/nope'))
+    const { status, body } = await send(captured, makeReq('POST', '/plugin-panel/nope'))
     assert.equal(status, 404)
     assert.match(body, /unknown method/)
   } finally {
@@ -130,7 +130,7 @@ test('非法 JSON body → 400', async () => {
   const root = mkdtempSync(join(testRoot, 'svc-'))
   try {
     const { captured } = makeService(root, ['s1'])
-    const { status, body } = await send(captured, makeReq('POST', '/skill-panel/browse', '{bad json'))
+    const { status, body } = await send(captured, makeReq('POST', '/plugin-panel/browse', '{bad json'))
     assert.equal(status, 400)
     assert.match(body, /"ok":false/)
   } finally {
@@ -142,7 +142,7 @@ test('sessionId 非活动 agent → 400', async () => {
   const root = mkdtempSync(join(testRoot, 'svc-'))
   try {
     const { captured } = makeService(root, ['live']) // 只有 live 是活的
-    const { status, body } = await send(captured, makeReq('POST', '/skill-panel/browse', JSON.stringify({ sessionId: 'ghost' })))
+    const { status, body } = await send(captured, makeReq('POST', '/plugin-panel/browse', JSON.stringify({ sessionId: 'ghost' })))
     assert.equal(status, 400)
     assert.match(body, /not a live agent/)
   } finally {
@@ -157,7 +157,7 @@ test('方法分派: browse 命中并返回 200 JSON entries', async () => {
     mkdirSync(join(root, 'local', 'git'), { recursive: true })
     writeFileSync(join(root, 'local', 'git', 'SKILL.md'), '---\nname: git\ndescription: does git\n---\n\nbody\n', 'utf8')
     const { captured } = makeService(root, ['s1'])
-    const { status, body } = await send(captured, makeReq('POST', '/skill-panel/browse', JSON.stringify({ sessionId: 's1' })))
+    const { status, body } = await send(captured, makeReq('POST', '/plugin-panel/browse', JSON.stringify({ sessionId: 's1' })))
     assert.equal(status, 200)
     const data = JSON.parse(body) as { entries: unknown }
     assert.ok(Array.isArray(data.entries))
@@ -171,7 +171,7 @@ test('sessions: 枚举所有 live sessions（含 root 标记），不要求 call
   const root = mkdtempSync(join(testRoot, 'svc-'))
   try {
     const { captured } = makeService(root, ['sess-a', 'sess-b'], ['sess-a']) // sess-a 是 root，sess-b 是子代理
-    const { status, body } = await send(captured, makeReq('POST', '/skill-panel/sessions', '{}'))
+    const { status, body } = await send(captured, makeReq('POST', '/plugin-panel/sessions', '{}'))
     assert.equal(status, 200)
     const data = JSON.parse(body) as { sessions: Array<{ sessionId: string; status: string; root: boolean }> }
     assert.equal(data.sessions.length, 2)
@@ -187,12 +187,12 @@ test('sessions: 传 sessionId 时只返回该会话（用于确认某 id 是否 
   const root = mkdtempSync(join(testRoot, 'svc-'))
   try {
     const { captured } = makeService(root, ['sess-a', 'sess-b'], ['sess-a'])
-    const { status, body } = await send(captured, makeReq('POST', '/skill-panel/sessions', JSON.stringify({ sessionId: 'sess-b' })))
+    const { status, body } = await send(captured, makeReq('POST', '/plugin-panel/sessions', JSON.stringify({ sessionId: 'sess-b' })))
     assert.equal(status, 200)
     const data = JSON.parse(body) as { sessions: Array<{ sessionId: string }> }
     assert.deepEqual(data.sessions.map(s => s.sessionId), ['sess-b'])
     // 未知 id → 空列表（确认该 id 非 live）
-    const empty = JSON.parse((await send(captured, makeReq('POST', '/skill-panel/sessions', JSON.stringify({ sessionId: 'ghost' })))).body) as { sessions: unknown[] }
+    const empty = JSON.parse((await send(captured, makeReq('POST', '/plugin-panel/sessions', JSON.stringify({ sessionId: 'ghost' })))).body) as { sessions: unknown[] }
     assert.equal(empty.sessions.length, 0)
   } finally {
     rmSync(root, { recursive: true, force: true })

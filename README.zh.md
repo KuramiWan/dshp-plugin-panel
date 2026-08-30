@@ -1,6 +1,6 @@
-# dshp-skill-panel
+# dshp-plugin-panel
 
-[![npm](https://img.shields.io/npm/v/@super_camel/dsh-skill-panel?style=flat-square&color=5B4CF0)](https://www.npmjs.com/package/@super_camel/dsh-skill-panel)
+[![npm](https://img.shields.io/npm/v/@super_camel/dsh-plugin-panel?style=flat-square&color=5B4CF0)](https://www.npmjs.com/package/@super_camel/dsh-plugin-panel)
 [![MIT](https://img.shields.io/badge/license-MIT-0B7285?style=flat-square)](LICENSE)
 [![DSH](https://img.shields.io/badge/DSH-Web-5B4CF0?style=flat-square)](cordis.patch.yml)
 
@@ -39,18 +39,18 @@
 ### 1. 安装
 
 ```sh
-dsh plugin --profile web add @super_camel/dsh-skill-panel
+dsh plugin --profile web add @super_camel/dsh-plugin-panel
 ```
 
 或从源码安装：
 
 ```sh
-dsh plugin --profile web add github:kuramiwan/dshp-skill-panel
+dsh plugin --profile web add github:kuramiwan/dshp-plugin-panel
 ```
 
 ### 2. 重启并打开面板
 
-重启 `dsh web`，打开 **设置 → 技能面板（Skill Panel）**。你会看到两个页签：
+重启 `dsh web`，打开 **设置 → 插件面板（Plugin Panel）**。你会看到两个页签：
 
 - **技能** —— 全局层、可用池、本会话已引入。
 - **插件** —— DSH 已加载的插件，以及会话 MCP。
@@ -148,7 +148,7 @@ flowchart LR
     subgraph Entrances["三种入口"]
         Tools["模型工具<br/>session_skill_*"]
         Cmds["斜杠命令<br/>/skill-*"]
-        Panel["技能面板"]
+        Panel["插件面板"]
     end
     Entrances --> Session["本会话技能集<br/>按会话隔离"]
     Session -->|"指回原文件夹，不复制"| Folders["你的技能<br/>local/ 池 + 全局 ~/.dsh/skills"]
@@ -180,7 +180,7 @@ pnpm debug --logs 20             # 最多包含 20 条最近的 error/warn 日�
 
 > **注意：** `pnpm debug` 脚本是**开发/源码工具**，**不会**随发布的 npm bundle 一起发布（bundle 只含 `lib/index.js`、`lib/client.js`、`cordis.patch.yml`），且需要 Node ≥ 22.6 —— 请克隆仓库后在源码树里运行。
 
-结构化日志会通过 `ctx.logger` 追加到 `<dshHome>/.dshp-skill-panel.log`（JSON Lines），因此调试器的错误线索与宿主实时日志来自同一数据源。
+结构化日志会通过 `ctx.logger` 追加到 `<dshHome>/.dshp-plugin-panel.log`（JSON Lines），因此调试器的错误线索与宿主实时日志来自同一数据源。
 
 > **Agent 指南**：面向 AI agent 的可观测性/调试工作流（埋点规范、调试器协议、兼容性、五步诊断）已沉淀在 [`docs/observability-sop.md`](./docs/observability-sop.md)。
 
@@ -202,7 +202,7 @@ dev/test 差异只在 patch 内容。模型配置与凭证经 `config.path` 指�
 
 ```bash
 # 1. 构建面板 checkout（clone 后必做；lib/ 不进 git）
-cd dshp-skill-panel && pnpm install && pnpm build
+cd dshp-plugin-panel && pnpm install && pnpm build
 
 # 2. 建开发根 + 挂载面板（官方入口：initProfile + pnpm add + reconcile bundles；
 #    `web` 是官方模板，base + web-app 自动带上）

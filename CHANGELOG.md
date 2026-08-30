@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   退出，不静默继续。
 
 ### Changed
+- **面板改名：「技能面板 → 插件面板」**。设置页节名/页面标题/`nav`/`page.title` 改为
+  「插件面板」（en: Plugin Panel），技能页签按钮独立为「技能」（`tab.skills`）。
+  面板层标识符全量改名：`SkillPanelService` → `PluginPanelService`（文件
+  `src/plugin-panel-service.ts`）、HTTP 路由 `/skill-panel` → `/plugin-panel`、
+  `SkillControlPlugin` → `PluginPanelPlugin`、注册 id `dshp-skill-panel` →
+  `dshp-plugin-panel`、日志文件 `.dshp-skill-panel.log` → `.dshp-plugin-panel.log`、
+  locale NS / STYLE_ID / bundle 注册名同步。npm 包名 `@super_camel/dsh-skill-panel`
+  → `@super_camel/dsh-plugin-panel`，仓库 `KuramiWan/dshp-skill-panel` →
+  `KuramiWan/dshp-plugin-panel`。**技能层保留原名**：`/skill-*` 命令、`session_skill_*`
+  工具、技能池、`.session-skills/` 持久化、`SKILL.md` 均不变。
 - wrapper 报错文案由「开发根未构建」改为「测试/开发根未构建」，并在
   `test/fixtures/INSTALL.md` 说明 `.dsh-dev` 是 dev/test 共用根（不是
   「先跑 dev 才能跑 test」的双 profile 结构）。
@@ -46,9 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.4] - 2026-08-25
 
 ### Added
-- Structured logging: `ctx.logger` backend with console / JSON Lines file (`<dshHome>/.dshp-skill-panel.log`) / in-memory buffer exporters (ADR-0009); replaces bare `console.warn/error`.
+- Structured logging: `ctx.logger` backend with console / JSON Lines file (`<dshHome>/.dshp-plugin-panel.log`) / in-memory buffer exporters (ADR-0009); replaces bare `console.warn/error`.
 - Standalone read-only debugger `scripts/debug-dump.ts` (`pnpm debug`): pool scan, session introduce-set, config resolution, consistency self-check, and recent error/warn log clues (ADR-0010).
-- `POST /skill-panel/sessions`: enumerate live sessions (`{sessionId, status, root}`) so a debugger/caller can discover live session ids instead of guessing (ADR-0010 live-session gap).
+- `POST /plugin-panel/sessions`: enumerate live sessions (`{sessionId, status, root}`) so a debugger/caller can discover live session ids instead of guessing (ADR-0010 live-session gap).
 
 ### Changed
 - CI (`ci.yml`) now runs the full type-check (host + client), tests, build, and a `pack-check` preflight; release adds a `verify` gate before publish.
@@ -111,7 +121,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Panel host service migrated from typert Remote RPC to a DSH `webServer`
-  HTTP route (`POST /skill-panel/<method>`, relative-path `fetch`), and the
+  HTTP route (`POST /plugin-panel/<method>`, relative-path `fetch`), and the
   client dropped the RPC value unwrap. This decouples the package from the DSH
   monorepo so it can be built and published standalone.
 - `peerDependencies` / `devDependencies` pinned to real npm versions
@@ -122,10 +132,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added project governance: `LICENSE` (MIT, © 2026 super_camel),
   `CONTRIBUTING.md`, CI (lightweight type-check), Keep-a-Changelog file.
 
-[Unreleased]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.4...v0.2.0
-[0.1.4]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.3...v0.1.4
-[0.1.3]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.2...v0.1.3
-[0.1.2]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/kuramiwan/dshp-skill-panel/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/kuramiwan/dshp-skill-panel/releases/tag/v0.1.0
+[Unreleased]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.1.4...v0.2.0
+[0.1.4]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.1.3...v0.1.4
+[0.1.3]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/kuramiwan/dshp-plugin-panel/releases/tag/v0.1.0

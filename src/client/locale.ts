@@ -1,10 +1,11 @@
-/** 技能面板（ADR-0007）client 半的 zh/en 文案。面向最终用户，不含实现细节。 */
-export const NS = 'skill-panel'
+/** 插件面板（ADR-0007）client 半的 zh/en 文案。面向最终用户，不含实现细节。 */
+export const NS = 'plugin-panel'
 
 export const zh = {
-  'nav': '技能面板',
-  'page.title': '技能面板',
-  'page.subtitle': '技能分三层管理：全局可见（所有会话自动可见）、可用池（按需加入本会话或设为全局）、本会话（仅当前会话，重启自动恢复）。三层按分组标签统一归类；设为全局 / 移回池只是移动位置，不复制不删除。',
+  'nav': '插件面板',
+  'tab.skills': '技能',
+  'page.title': '插件面板',
+  'page.subtitle': '插件面板管理两类可动态插拔的内容：技能页签管会话级技能（全局可见 / 可用池 / 本会话已引入三层），插件页签管进程级插件（热插拔 / 冷挂载 / MCP）。三层按分组标签统一归类；设为全局 / 移回池只是移动位置，不复制不删除。',
   'search.placeholder': '搜索技能名称或描述…',
   'global.title': '全局可见（所有会话自动可见）',
   'global.empty': '还没有全局可见的技能（在下方可用池点「设为全局」提升到全局层）',
@@ -121,9 +122,10 @@ export const zh = {
 }
 
 export const en = {
-  'nav': 'Skill Panel',
-  'page.title': 'Skill Panel',
-  'page.subtitle': 'Skills are managed in three layers: Globally visible (all sessions see it), Available pool (add to this session or set as global), and This session (current session only, restored on resume). All three layers share grouping via tags; "Set as global / Move back to pool" only moves a skill between layers — no copies, no deletion.',
+  'nav': 'Plugin Panel',
+  'tab.skills': 'Skills',
+  'page.title': 'Plugin Panel',
+  'page.subtitle': 'The Plugin Panel manages two kinds of dynamically pluggable content: the Skills tab manages session-scoped skills (globally visible / available pool / introduced in this session), and the Plugins tab manages process-scoped plugins (hot-pluggable / cold mount / MCP). The three skill layers share grouping via tags; "Set as global / Move back to pool" only moves a skill between layers — no copies, no deletion.',
   'search.placeholder': 'Search skill name or description…',
   'global.title': 'Globally visible (all sessions see it)',
   'global.empty': 'No globally visible skills yet (use "Set as global" on a pool skill below)',
@@ -239,4 +241,4 @@ export const en = {
   'plugin.help': 'Help',
 }
 
-export type SkillPanelLocaleDict = typeof zh
+export type PluginPanelLocaleDict = typeof zh

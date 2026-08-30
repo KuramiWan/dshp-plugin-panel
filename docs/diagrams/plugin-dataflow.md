@@ -1,6 +1,6 @@
 # 数据流：一次插件操作
 
-> 图契约：这张图声明一次插件操作（install / toggle / promote / demote / list）从「面板点击」到「组合层落盘 + 热重载」的完整流转路径与写保护边界。`skill-panel-service.ts` 的路由分发、`plugin-manager.ts` 的写保护、`mcp-manager.ts` 的会话级连接必须与图一致。
+> 图契约：这张图声明一次插件操作（install / toggle / promote / demote / list）从「面板点击」到「组合层落盘 + 热重载」的完整流转路径与写保护边界。`plugin-panel-service.ts` 的路由分发、`plugin-manager.ts` 的写保护、`mcp-manager.ts` 的会话级连接必须与图一致。
 > 目的：理清"操作改了什么文件"——面板操作是写组合层（patch/bundles/状态文件），不是写会话
 > 日期：2026-08-28
 > 读者：AI 优先
@@ -14,7 +14,7 @@ flowchart TD
     end
 
     subgraph HOST["DSH 宿主（同进程 HTTP）"]
-        SVC["SkillPanelService<br/>POST /skill-panel/plugin*"]
+        SVC["PluginPanelService<br/>POST /plugin-panel/plugin*"]
         PM["PluginManager"]
         MCP["SessionMcpManager"]
     end
@@ -29,13 +29,13 @@ flowchart TD
     W["watchUserPatches watcher（热重载）"]
     REG["cordis.registry（fibers）"]
 
-    CL -->|"POST /skill-panel/pluginList"| SVC
+    CL -->|"POST /plugin-panel/pluginList"| SVC
     SVC -->|"list(agent)"| PM
     PM -->|"读 patch/bundles/specs + registry fibers"| FILES
     PM -->|"合并视图（source: core/patch/bundle/mcp）"| SVC
     SVC --> CL
 
-    CL -->|"POST /skill-panel/pluginToggle|install|promote|demote"| SVC
+    CL -->|"POST /plugin-panel/pluginToggle|install|promote|demote"| SVC
     SVC -->|"enable/disable/install/promoteToPatch/demoteToBundle"| PM
 
     PM -->|"install/enable: 写 insert 行"| PATCH

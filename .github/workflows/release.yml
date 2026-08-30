@@ -61,7 +61,7 @@ jobs:
       - name: Publish to npm
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          if npm view "@super_camel/dsh-skill-panel@${VERSION}" version >/dev/null 2>&1; then
+          if npm view "@super_camel/dsh-plugin-panel@${VERSION}" version >/dev/null 2>&1; then
             echo "Version ${VERSION} already published; skipping npm publish."
           else
             pnpm publish --provenance --no-git-checks

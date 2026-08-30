@@ -34,8 +34,8 @@ import { atomicWriteFileSync, readTextFileSync } from './fs.ts'
 import { isMcpClientConfig, registryFibers } from './registry.ts'
 
 /** 面板自身包名与行 id（禁止停）。 */
-export const PANEL_PACKAGE = '@super_camel/dsh-skill-panel'
-export const PANEL_ROW_ID = 'dshp-skill-panel'
+export const PANEL_PACKAGE = '@super_camel/dsh-plugin-panel'
+export const PANEL_ROW_ID = 'dshp-plugin-panel'
 /** mcp-client 桥接包名（M3：patch 行/spec 里 name 为该包者不当作插件 patch 行管理）。 */
 export const MCP_CLIENT_PACKAGE = '@deepseek-ai/dsh-mcp-client'
 
@@ -151,13 +151,13 @@ export class PluginManager {
 
   // ---- 组合盘点 ----
 
-  /** 面板自身 fiber 的 runtime 名（fiber.name 是插件类名，如 SkillControlPlugin）。 */
+  /** 面板自身 fiber 的 runtime 名（fiber.name 是插件类名，如 PluginPanelPlugin）。 */
   private selfFiberName(): string | undefined {
     const name = (this.ctx.fiber as unknown as { name?: unknown })?.name
     return typeof name === 'string' && name !== '' ? name : undefined
   }
 
-  /** 面板自身 patch 行的 id（fiber.entry.id，如 dshp-skill-panel）。 */
+  /** 面板自身 patch 行的 id（fiber.entry.id，如 dshp-plugin-panel）。 */
   private selfRowId(): string | undefined {
     const id = (this.ctx.fiber as unknown as { entry?: { id?: unknown } })?.entry?.id
     return typeof id === 'string' && id !== '' ? id : undefined
@@ -214,7 +214,7 @@ export class PluginManager {
     for (const fiber of fibers) {
       const hasName = typeof fiber.name === 'string' && fiber.name !== ''
       const rawId = hasName ? fiber.name as string : `(unnamed #${++unnamedSeq})`
-      // 面板自身 fiber 的 runtime 名是类名（SkillControlPlugin），展示用行 id（dshp-skill-panel）。
+      // 面板自身 fiber 的 runtime 名是类名（PluginPanelPlugin），展示用行 id（dshp-plugin-panel）。
       const isSelfFiber = hasName && rawId === this.selfFiberName()
       const id = isSelfFiber ? (this.selfRowId() ?? rawId) : rawId
       // 全局 MCP 行（home patch 的 mcp-client 桥接）不再作为插件行展示；

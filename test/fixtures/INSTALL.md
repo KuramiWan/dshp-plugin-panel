@@ -19,7 +19,7 @@
 
 ```bash
 # 1. 构建面板（clone 后一次性）
-cd dshp-skill-panel && pnpm install && pnpm build
+cd dshp-plugin-panel && pnpm install && pnpm build
 
 # 2. 建开发根 + 挂载面板（官方入口；web 是官方模板，base+web-app 自动带上）
 mkdir -p .dsh-dev
@@ -59,7 +59,7 @@ dsh --profile web --port 3081   # 生产（默认 ~/.dsh，npm 发布版）
 
 ## 验证
 
-打开 `http://127.0.0.1:3182/`，进入 设置 → 技能面板：
+打开 `http://127.0.0.1:3182/`，进入 设置 → 插件面板：
 
 - **技能页签**应看到 4 个技能：alpha（带 tag test/demo）、beta（无 tag）、gamma（带 tag test）、delta（带 tag demo）
 - **插件页签**应看到：

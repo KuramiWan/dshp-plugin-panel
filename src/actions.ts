@@ -1,7 +1,7 @@
 /**
  * DSHP skill 三入口（模型工具 / 斜杠命令 / 面板 Remote）共享的核心动作（ADR-0007「三面同源」）。
  * 把 browse / introduce / remove / setTags 的业务逻辑收敛到一处，避免 skills/commands/service 各自手写漂移。
- * 各表面（tools.ts / commands.ts / skill-panel-service.ts）只负责把统一结果格式化为自身形状。
+ * 各表面（tools.ts / commands.ts / plugin-panel-service.ts）只负责把统一结果格式化为自身形状。
  * 池 = 用户自管的唯一内容源（local/，放文件=加入管理）：无订阅/生态/信任概念，全量可引入。
  * 分组（2026-08-19）：统一用技能 frontmatter `tags`，三池（全局激活 / 可用池 / 会话引入）共享。
  * 引入 = 纯会话注册：把池内技能注册进当前会话运行时（agent scope），不改动任何磁盘文件；
@@ -114,7 +114,7 @@ export async function introduceSkill(
     resourceBase: { kind: 'directory', path: def.directory },
   })
   store.track(agent, name, dispose)
-  ctx.logger('skill-panel').info(`introduced "${name}" session=${agent.session?.id ?? agent.id} shadowed=${shadowed}`)
+  ctx.logger('plugin-panel').info(`introduced "${name}" session=${agent.session?.id ?? agent.id} shadowed=${shadowed}`)
   return { ok: true, name, shadowed, alreadyIntroduced: false, persisted: true }
 }
 
@@ -140,7 +140,7 @@ export async function replaySession(ctx: Context, poolRoot: string, store: Sessi
     try {
       await introduceSkill(ctx, poolRoot, store, agent, name)
     } catch (error) {
-      ctx.logger('skill-panel').warn(`replay "${name}" for session "${id}" failed: ${error instanceof Error ? error.message : String(error)}`)
+      ctx.logger('plugin-panel').warn(`replay "${name}" for session "${id}" failed: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 }

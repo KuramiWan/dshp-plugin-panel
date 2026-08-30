@@ -1,8 +1,8 @@
-/** 技能面板一次性样式：全部走 DSH 真实主题令牌（定义在 body，含 body[data-ds-dark-theme] 深色分支），
+/** 插件面板一次性样式：全部走 DSH 真实主题令牌（定义在 body，含 body[data-ds-dark-theme] 深色分支），
  *  注入 <style data-plugin>。令牌清单来自 Client Inspect `Theme.listTokens`；勿用未列出的自定义 --dsw-alias-* 名。 */
 import type { Context } from '@deepseek-ai/cordis'
 
-export const STYLE_ID = 'dshp-skill-panel-css'
+export const STYLE_ID = 'dshp-plugin-panel-css'
 
 const CSS = `
 .dshp-root{display:flex;flex-direction:column;gap:10px;font-family:inherit}
@@ -90,12 +90,12 @@ export function ensureStyle(ctx: Context): void {
     if (typeof document !== 'undefined' && document.getElementById(STYLE_ID) === null) {
       const tag = document.createElement('style')
       tag.id = STYLE_ID
-      tag.dataset.plugin = 'skill-panel'
+      tag.dataset.plugin = 'plugin-panel'
       tag.textContent = CSS
       document.head.appendChild(tag)
     }
     return () => {
       if (typeof document !== 'undefined') document.getElementById(STYLE_ID)?.remove()
     }
-  }, 'skill-panel: styles')
+  }, 'plugin-panel: styles')
 }
