@@ -4,10 +4,12 @@
 > 目的：理清"操作改了什么文件"——面板操作是写组合层（patch/bundles/状态文件），不是写会话
 > 日期：2026-08-28
 > 读者：AI 优先
+> 关联：同一批 plugin-manager 操作（enable/disable/install/promoteToPatch/demoteToBundle）的
+> 状态迁移见 [plugin-lifecycle.md](./plugin-lifecycle.md)——两图维护同一批操作，改代码需同步。
 
 ```mermaid
 flowchart TD
-    subgraph UI["浏览器面板（React）"]
+    subgraph UI["插件页（React）"]
         CL["plugin-view.tsx<br/>按钮：启停/安装/提升/降级"]
     end
 

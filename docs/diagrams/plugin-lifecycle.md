@@ -4,6 +4,9 @@
 > 目的：对齐插件页签的挂载语义、固化 promote/demote 迁移（最近改动最多的部分）
 > 日期：2026-08-28
 > 读者：AI 优先
+> 关联：本图与 [plugin-dataflow.md](./plugin-dataflow.md) 共享同一批
+> plugin-manager 操作（enable/disable/install/promoteToPatch/demoteToBundle）——
+> 一改代码需同步两张图契约；操作怎么落盘见数据流图。
 
 ```mermaid
 stateDiagram-v2
