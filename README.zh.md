@@ -14,6 +14,8 @@
 
 > **版本说明。** 本 README 描述当前发布版本。若你的安装里缺少文档中的某项能力，请对照 [CHANGELOG.md](CHANGELOG.md) 检查已安装版本。
 
+![技能面板：全局层、可用池、本会话已引入，三区一屏](docs/assets/skills-overview.png)
+
 ## Highlights
 
 **技能**
@@ -67,6 +69,10 @@ dsh plugin --profile web add github:kuramiwan/dshp-skill-panel
 
 技能支持搜索、展开详情，自行分组。
 
+引入技能只需一次点击，面板会提示引入集已持久化、宿主重启后自动恢复：
+
+![点一下「加入本会话」，技能即刻只对本会话生效](docs/assets/skill-introduce.png)
+
 <details>
 <summary><b>高级工具 —— 斜杠命令与模型工具</b></summary>
 
@@ -92,6 +98,8 @@ dsh plugin --profile web add github:kuramiwan/dshp-skill-panel
 - **用户安装（patch）** —— 从 `cordis.patch.yml` 挂载；启用/停用立即生效，无需重启。
 - **用户安装（bundle）** —— 从 `dsh.profile.bundles` 挂载；启用/停用需重启。
 - **MCP** —— 会话级连接，单独管理。
+
+![插件页签：热插拔（patch）插件即时启停、冷挂载列表，以及 MCP 区](docs/assets/plugins-mcp.png)
 
 ### 新增插件
 

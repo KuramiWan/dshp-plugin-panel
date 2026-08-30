@@ -14,6 +14,8 @@
 
 > **Version note.** This README describes the current release. If a documented capability is missing in your build, check the installed version against the changelog in [CHANGELOG.md](CHANGELOG.md).
 
+![Skill Panel: the global layer, the available pool, and the current session's introduced set — all in one view](docs/assets/skills-overview.png)
+
 ## Highlights
 
 **Skills**
@@ -69,6 +71,10 @@ The **Skills** tab is the everyday entry point. It shows three groups:
 
 Skills are shown with search, expandable details, and badges marking a skill as **global** or **introduced**.
 
+Introducing a skill is a single click, and the panel confirms the introduced set is persisted and restored across host restarts:
+
+![One click — Add to this session — and the skill is live for the current session only](docs/assets/skill-introduce.png)
+
 <details>
 <summary><b>Power tools &mdash; slash commands and model tools</b></summary>
 
@@ -94,6 +100,8 @@ The **Plugins** tab lists the plugins DSH has loaded, grouped by how they are mo
 - **User-installed (patch)** — mounted from `cordis.patch.yml`; enable/disable takes effect immediately, no restart.
 - **User-installed (bundle)** — mounted from `dsh.profile.bundles`; enable/disable requires a restart.
 - **MCP** — session-level connections, managed separately.
+
+![Plugins tab: hot-pluggable patch plugins with live enable/disable, cold mounts, and the MCP section](docs/assets/plugins-mcp.png)
 
 ### Adding a plugin
 
