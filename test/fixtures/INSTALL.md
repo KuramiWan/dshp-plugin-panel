@@ -5,6 +5,10 @@
 测试用项目内根（`.dsh-dev/`），两个根都跑**官方 `web` profile**
 （dsh-base + dsh-web-app + 面板，与生产同组合）；差异只在 patch 内容。
 
+> **关于 `.dsh-dev`**：这是 **dev/test 共用根**（`./dsh-dev` 与 `./dsh-test`
+> 用同一个 `DSH_HOME`，差异只在 patch 内容），不是「先跑 dev 才能跑 test」
+> 的双 profile 结构。名字沿袭双 profile 时代，含义请以本段为准。
+
 ## 前置
 
 - `dsh` 在 PATH、`pnpm`、`node ≥ 20`

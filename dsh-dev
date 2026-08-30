@@ -37,9 +37,11 @@ PROFILE_NAME="web"
 PROFILE_DIR="$DEV_HOME/profiles/$PROFILE_NAME"
 PATCH_FILE="$PROFILE_DIR/cordis.patch.yml"
 
-# ---- 2. 校验开发根已构建 ----
+# ---- 2. 校验开发/测试根已构建 ----
+# 注意：.dsh-dev 是 dev/test 共用根（一个 DSH_HOME 装两种模式，差异只在
+# patch 内容），不是「先跑 dev 才能跑 test」的双 profile 结构。
 if [ ! -f "$PROFILE_DIR/package.json" ]; then
-  echo "错误: 开发根未构建。请先在仓库根执行:" >&2
+  echo "错误: 测试/开发根未构建。请先在仓库根执行:" >&2
   echo "  DSH_HOME=\"\$PWD/.dsh-dev\" dsh plugin --profile $PROFILE_NAME add \"\$PWD\"" >&2
   echo "  （web 是官方模板，自动带 dsh-base + dsh-web-app，与生产同组合）" >&2
   exit 1
@@ -69,7 +71,37 @@ EOF
   echo "已补全开发根凭证/设置共享（指向生产 ~/.dsh）"
 fi
 
-# ---- 2.6 测试模式：自动补全 fixtures patch（幂等） ----
+# ---- 2.6 自动补全 web-app bundle（幂等） ----
+# 风险回归防护（052e220 重构曾删掉 708aa20 的修复，见 issue #1）：
+# dsh plugin add 在 profile 模板不带 web-app 时，生成的 bundles 只有
+# dsh-base + 面板，缺 @deepseek-ai/dsh-web-app（提供 webServer HTTP 服务）
+# 会导致面板 initialized 后无 web 层、进程静默挂起（无监听、无报错）。
+# 官方 web 模板通常自带 web-app，此处仅为「模板组合变化」兜底：已有则跳过，
+# 缺则幂等补入（web-app 是内核自带，全局安装可直接解析，无需 pnpm 装）。
+# 判断一律走 JSON 解析（不全文 grep，避免子串误判）；bundles 结构异常时
+# 大声失败退出，绝不静默继续（那正是本防护要防的「无报错挂起」模式）。
+PKG_FILE="$PROFILE_DIR/package.json"
+node -e '
+  const fs = require("fs");
+  const file = process.argv[1];
+  const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+  const bundles = pkg.dsh?.profile?.bundles;
+  if (!Array.isArray(bundles)) {
+    console.error("错误: " + file + " 缺少 dsh.profile.bundles 数组，无法补全 web-app bundle（profile 结构异常）。");
+    process.exit(1);
+  }
+  if (bundles.includes("@deepseek-ai/dsh-web-app")) process.exit(0); // 已有 → 跳过
+  const at = bundles.indexOf("@deepseek-ai/dsh-base");
+  if (at === -1) {
+    console.error("错误: " + file + " 的 bundles 缺少 @deepseek-ai/dsh-base，无法确定 web-app 插入位置。");
+    process.exit(1);
+  }
+  bundles.splice(at + 1, 0, "@deepseek-ai/dsh-web-app");
+  fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
+  process.stdout.write("已补全 web-app bundle（webServer 服务）\n");
+' "$PKG_FILE"
+
+# ---- 2.7 测试模式：自动补全 fixtures patch（幂等） ----
 # dsh-test = web profile + fixtures（dshp-test-plugin 热插拔行 +
 # test-mcp-stdio MCP 桥接行）。test-plugin 需真副本进 profile node_modules。
 if [ "$MODE" = "test" ]; then

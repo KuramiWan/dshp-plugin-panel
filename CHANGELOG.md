@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `dsh-dev` / `dsh-test` 启动前幂等补全 `@deepseek-ai/dsh-web-app` bundle
+  （052e220 重构删掉 708aa20 修复的回归防护）：profile 模板组合缺 web-app 时
+  自动补入，防止面板 initialized 后无 web 层静默挂起（无监听、无报错）。
+  判断走 JSON 解析（不全文 grep，避免子串误判），在 `dsh-base` 之后插入；
+  `dsh.profile.bundles` 结构异常（缺 bundles 数组或缺 dsh-base）时大声失败
+  退出，不静默继续。
+
+### Changed
+- wrapper 报错文案由「开发根未构建」改为「测试/开发根未构建」，并在
+  `test/fixtures/INSTALL.md` 说明 `.dsh-dev` 是 dev/test 共用根（不是
+  「先跑 dev 才能跑 test」的双 profile 结构）。
+
 ## [0.2.0] - 2026-08-28
 
 ### Added
