@@ -90,6 +90,14 @@ export function PluginPanelView(props: PluginPanelViewProps) {
   const globalsList = useMemo(() => globals ?? [], [globals])
   const introducedList = useMemo(() => introduced ?? [], [introduced])
 
+  /** 关键词过滤：命中 name 或 description（大小写不敏感）。空 query 全过。
+   *  与服务端 browse 的 filterBrowse 同规则，三区（池/全局/已引入）统一。 */
+  const matchesQuery = (name: string, description: string): boolean => {
+    const q = query.trim().toLowerCase()
+    if (q === '') return true
+    return name.toLowerCase().includes(q) || description.toLowerCase().includes(q)
+  }
+
   /** 三区合并为 SkillItem[]（可用池条目为主，附 introduced 标记）。 */
   const poolItems: SkillItem[] = useMemo(() => visible.map(e => ({
     name: e.name,
@@ -97,18 +105,24 @@ export function PluginPanelView(props: PluginPanelViewProps) {
     tags: e.tags,
     ...(e.introduced ? { badge: 'introduced' as const } : {}),
   })), [visible])
-  const globalItems: SkillItem[] = useMemo(() => globalsList.map(g => ({
-    name: g.name,
-    description: g.description,
-    tags: g.tags,
-    badge: 'global' as const,
-  })), [globalsList])
-  const introducedItems: SkillItem[] = useMemo(() => introducedList.map(s => ({
-    name: s.name,
-    description: s.description ?? '',
-    tags: s.tags ?? [],
-    badge: 'introduced' as const,
-  })), [introducedList])
+  /** 全局激活区：服务端返回全量，搜索词在前端过滤（与服务端 browse 同规则）。 */
+  const globalItems: SkillItem[] = useMemo(() => globalsList
+    .filter(g => matchesQuery(g.name, g.description))
+    .map(g => ({
+      name: g.name,
+      description: g.description,
+      tags: g.tags,
+      badge: 'global' as const,
+    })), [globalsList, query])
+  /** 本会话已引入：同样响应搜索词。 */
+  const introducedItems: SkillItem[] = useMemo(() => introducedList
+    .filter(s => matchesQuery(s.name, s.description ?? ''))
+    .map(s => ({
+      name: s.name,
+      description: s.description ?? '',
+      tags: s.tags ?? [],
+      badge: 'introduced' as const,
+    })), [introducedList, query])
 
   /**
    * 按 tags 分组（跨池统一）：一个技能有多个 tag 出现在多个组；无 tag 归「未分组」。
@@ -300,7 +314,7 @@ export function PluginPanelView(props: PluginPanelViewProps) {
           {busy && globals === null ? (
             <div className="dshp-empty">{t('loading')}</div>
           ) : globalItems.length === 0 ? (
-            <div className="dshp-empty">{t('global.empty')}</div>
+            <div className="dshp-empty">{query.trim().length > 0 ? t('list.empty') : t('global.empty')}</div>
           ) : (
             renderGroup('global', groupedGlobal, item => (
               <button className="dshp-btn dshp-btn-danger" onClick={() => runDeactivate(item.name)}>{t('action.deactivate')}</button>
@@ -327,7 +341,7 @@ export function PluginPanelView(props: PluginPanelViewProps) {
           {busy && introduced === null ? (
             <div className="dshp-empty">{t('loading')}</div>
           ) : introducedItems.length === 0 ? (
-            <div className="dshp-empty">{t('introduced.empty')}</div>
+            <div className="dshp-empty">{query.trim().length > 0 ? t('list.empty') : t('introduced.empty')}</div>
           ) : (
             renderGroup('introduced', groupedIntroduced, item => (
               <button className="dshp-btn dshp-btn-danger" onClick={() => runRemove(item.name)}>{t('action.remove')}</button>
