@@ -20,7 +20,7 @@
 
 **技能**
 
-- **会话级技能管理。** 按会话引入、移除技能。每个会话有自己隔离的技能集，可热插拔，会话之间互不泄漏。
+- **会话级技能管理。** 按会话引入、移除技能。每个会话有自己隔离的技能集，可热插拔，会话之间互不泄漏；宿主重启后，resume 的会话自动重放引入集。
 
 **插件 & MCP**
 
@@ -69,7 +69,7 @@ dsh plugin --profile web add github:kuramiwan/dshp-plugin-panel
 
 技能支持搜索、展开详情，自行分组。
 
-引入技能只需一次点击，面板会提示引入集已持久化、宿主重启后自动恢复：
+引入技能只需一次点击，面板会提示引入集已持久化 —— 宿主重启后，resume 的会话会自动重放：
 
 ![点一下「加入本会话」，技能即刻只对本会话生效](docs/assets/skill-introduce.png)
 
@@ -141,21 +141,36 @@ dsh plugin --profile web add github:kuramiwan/dshp-plugin-panel
 
 ## How it works
 
-面板和它的工具操作的是同一份**本会话**技能集。引入技能是纯会话注册 —— 不复制文件，注册的资源目录指回原文件夹。本会话的引入集落盘保存，会话恢复时自动重放。
+DSH 自身的模型就是 *everything is a plugin*（一切都是插件）：宿主是一个组合，组合里每个可挂载行（cordis composition line）都是插件 —— skill 是插件提供的文档能力，MCP 是 `mcp-client` 组合行，宿主插件是 `patch`/`bundle` 组合行。面板并不引入第二套模型：它只是给这个组合层一个**管理视图**，仅在你管理时把 *技能 vs 插件* 作为展示区分。
 
 ```mermaid
-flowchart LR
-    subgraph Entrances["三种入口"]
-        Tools["模型工具<br/>session_skill_*"]
-        Cmds["斜杠命令<br/>/skill-*"]
-        Panel["插件面板"]
+flowchart TB
+    subgraph PANEL["dshp-plugin-panel"]
+        PANELNOTE["它自己也是 patch 插件，挂在 cordis.patch.yml<br/>给你的 DSH 组合层加一个管理视图"]
     end
-    Entrances --> Session["本会话技能集<br/>按会话隔离"]
-    Session -->|"指回原文件夹，不复制"| Folders["你的技能<br/>local/ 池 + 全局 ~/.dsh/skills"]
-    Session -->|"落盘持久"| Persist[".session-skills/sessionId.json"]
+
+    PANEL -->|"暴露"| VIEW["管理视图：DSH 组合层的可管理界面<br/>everything-is-plugin（一切能力都是组合行）"]
+
+    VIEW --> SKILL["技能能力（会话级）<br/>引入 = 注册：指回池目录，不复制文件<br/>落盘 &lt;poolRoot&gt;/.session-skills/&lt;sessionId&gt;.json，resume 后重放"]
+    VIEW --> MCP["MCP 能力（会话级）<br/>mcp-client 组合行 · 会话级连接/断开"]
+    VIEW --> HOST["宿主插件（进程级）<br/>patch：热挂载（改 cordis.patch.yml 即热重载）<br/>bundle：冷挂载（改 dsh.profile.bundles，重启生效）"]
+
+    HOST -->|"可提升"| PROMOTE["bundle → patch「提升为热插拔」"]
+
+    subgraph FRONT["前端管理视图（仅展示区分）"]
+        TABSKILLS["技能页签<br/>全局层 / 可用池 / 本会话"]
+        TABPLUGINS["插件页签<br/>内置 / patch / bundle / MCP"]
+    end
+
+    VIEW -.->|"同一语义层，仅展示区分"| FRONT
 ```
 
-插件与会话 MCP（另一个页签）由面板直接管理 —— 见 [Plugins & MCP](#plugins-and-mcp)。
+1. **一切都是插件。** skill、MCP、宿主插件都是同一个 DSH 组合里的可挂载行；它们的不同只在 *挂在哪*，不在种类。
+2. **两种挂载维度。** 会话级能力（引入的技能、连上的 MCP）活在 agent 上下文里、按会话隔离；进程级宿主插件加载进宿主、全局生效。
+3. **引入技能是纯注册。** 不复制文件 —— 注册指回池目录（`~/.dsh/.skill-pool/local/`）。引入集落盘到 `<poolRoot>/.session-skills/<sessionId>.json`，宿主重启后 **resume 的会话**自动重放。
+4. **前端只做展示区分。** 同一批底层能力被展示为「技能」页签与「插件」页签；斜杠命令与模型工具是无 GUI 的同一管理面。
+
+精确路径、resume 触发点、影子覆盖与 patch/bundle 挂载的完整图见 [`docs/diagrams/capability-mount.md`](./docs/diagrams/capability-mount.md)。
 
 ## Troubleshooting
 

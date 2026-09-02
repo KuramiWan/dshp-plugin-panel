@@ -19,7 +19,7 @@
 ## Highlights
 
 **Skills**
-- **Session-level skill management.** Introduce and remove skills per session — each session keeps its own isolated set, shadow overrides stay local, nothing leaks between sessions, and the introduced set survives host restarts.
+- **Session-level skill management.** Introduce and remove skills per session — each session keeps its own isolated set, shadow overrides stay local, nothing leaks between sessions, and a session's introduced set is replayed when it resumes after a host restart.
 - **A single skill view.** The **Skills** tab shows the global layer (`~/.dsh/skills`), your available pool (`~/.dsh/.skill-pool/local/`), and the current session's introduced set — search, expand details, and introduce, activate, or tag with a click.
 
 **Plugins & MCP**
@@ -71,7 +71,7 @@ The **Skills** tab is the everyday entry point. It shows three groups:
 
 Skills are shown with search, expandable details, and badges marking a skill as **global** or **introduced**.
 
-Introducing a skill is a single click, and the panel confirms the introduced set is persisted and restored across host restarts:
+Introducing a skill is a single click, and the panel confirms the introduced set is persisted — it is replayed automatically when this session resumes after a host restart:
 
 ![One click — Add to this session — and the skill is live for the current session only](docs/assets/skill-introduce.png)
 
@@ -143,21 +143,36 @@ The model can manage session MCP itself with `session_mcp_list`, `session_mcp_co
 
 ## How it works
 
-The panel and its tools all operate on the same **per-session** skill set. Introducing a skill is a pure session registration — no files are copied; the registered resource points back at the original folder. The per-session introduced set is saved to disk and replayed when the session resumes.
+DSH's own model is *everything is a plugin*: the host is a composition whose loadable rows (cordis composition lines) are all plugins — a skill is the document capability a plugin provides, MCP is an `mcp-client` composition row, and a host plugin is a `patch`/`bundle` row. The panel does not introduce a second model: it gives that composition layer a **management view**, and only distinguishes *skills vs plugins* as presentation when you manage them.
 
 ```mermaid
-flowchart LR
-    subgraph Entrances["Three entrances"]
-        Tools["Model tools<br/>session_skill_*"]
-        Cmds["Slash commands<br/>/skill-*"]
-        Panel["Plugin Panel"]
+flowchart TB
+    subgraph PANEL["dshp-plugin-panel"]
+        PANELNOTE["a patch plugin itself, mounted from cordis.patch.yml<br/>adds a management view over the DSH composition layer"]
     end
-    Entrances --> Session["Current session skill set<br/>isolated per session"]
-    Session -->|"points back, no file copy"| Folders["Your skills<br/>local/ pool + global ~/.dsh/skills"]
-    Session -->|"persisted"| Persist[".session-skills/sessionId.json"]
+
+    PANEL -->|"exposes"| VIEW["Management view: the manageable face of DSH's composition layer<br/>everything-is-plugin (every capability is a composition row)"]
+
+    VIEW --> SKILL["Skill capability (session-level)<br/>introduce = register: points back at the pool folder, no file copy<br/>persisted to &lt;poolRoot&gt;/.session-skills/&lt;sessionId&gt;.json, replayed on resume"]
+    VIEW --> MCP["MCP capability (session-level)<br/>mcp-client composition row · session-scoped connect/disconnect"]
+    VIEW --> HOST["Host plugins (process-level)<br/>patch: hot mount (edit cordis.patch.yml — hot reload)<br/>bundle: cold mount (edit dsh.profile.bundles — restart)"]
+
+    HOST -->|"can promote"| PROMOTE["bundle → patch 「Make hot-pluggable」"]
+
+    subgraph FRONT["Frontend management view (presentation only)"]
+        TABSKILLS["Skills tab<br/>global layer / available pool / this session"]
+        TABPLUGINS["Plugins tab<br/>built-in / patch / bundle / MCP"]
+    end
+
+    VIEW -.->|"same semantic layer, presentation only"| FRONT
 ```
 
-Plugins and session MCP (the other tab) are managed through the panel directly — see [Plugins & MCP](#plugins-and-mcp).
+1. **Everything is a plugin.** Skills, MCP, and host plugins are all loadable rows of the same DSH composition; they differ in *where they mount* — not in kind.
+2. **Two mount dimensions.** Session-level capabilities (an introduced skill, a connected MCP) live in the agent context and are isolated per session; process-level host plugins are loaded into the host and affect everything.
+3. **Introducing a skill is a pure registration.** No files are copied — the registration points back at the pool folder (`~/.dsh/.skill-pool/local/`). The introduced set is saved to `<poolRoot>/.session-skills/<sessionId>.json` and replayed automatically when a **resumed** session comes back after a host restart.
+4. **The frontend only presents the split.** The same underlying capabilities are shown as a **Skills** tab and a **Plugins** tab; the slash commands and model tools are the same management surface without the GUI.
+
+A fuller diagram — exact paths, the resume trigger, shadow overrides, and the patch/bundle mounts — lives in [`docs/diagrams/capability-mount.md`](./docs/diagrams/capability-mount.md).
 
 ## Troubleshooting
 
