@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-09-02
+
+### Changed
+- **README「How it works」重画并重写**：语义统一为「everything-is-plugin」——
+  skill / MCP / 宿主插件都是 DSH 组合层（cordis composition）的可挂载行，
+  只是挂载维度不同（skill/MCP 会话级、宿主插件进程级）；插件面板是给这个
+  组合层加的管理视图，本身也是 patch 插件；前端「技能 / 插件」两页签只是
+  展示区分，不是两套模型。正文改为编号步骤与图一一对应。
+- 新增深图 `docs/diagrams/capability-mount.md`（图契约头 + 源码级事实：
+  引入集全路径 `<poolRoot>/.session-skills/<sessionId>.json`、resume 触发回放、
+  影子覆盖、patch/bundle 挂载），README 链接之；关联既有 plugin-lifecycle /
+  plugin-dataflow 图。
+- 「宿主重启后自动恢复」措辞统一限定为 **resume 的会话**（回放仅在
+  `agent/session-start` 的 `source=resume` 触发）：Highlights、截图说明、
+  How it works 正文同步修正；`.session-skills/` 路径补全 `<poolRoot>/` 前缀。
+
 ## [0.2.1] - 2026-08-30
 
 ### Fixed
@@ -132,7 +148,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added project governance: `LICENSE` (MIT, © 2026 super_camel),
   `CONTRIBUTING.md`, CI (lightweight type-check), Keep-a-Changelog file.
 
-[Unreleased]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.1.2...v0.1.3
