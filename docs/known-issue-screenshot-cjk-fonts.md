@@ -6,4 +6,4 @@
 
 **通用缓解（他人复现时）**：
 1. 装任一 CJK 字体（如 `fonts-noto-cjk`），或按上文 `fonts.conf` 指向现成字体目录；
-2. 或把面板 i18n 的全角括号 `（n）` 改半角 `(n)`（`src/client/locale.ts`），可消除英文 UI 截图的豆腐块（fixture 中文描述建议不纳入取景）。
+2. 或把面板的全角分组计数括号 `（n）` 改半角 `(n)`（硬编码于 `src/client/view.tsx` 与 `src/client/plugin-view.tsx` 的分组计数模板，不在 `locale.ts`），可消除英文 UI 截图的豆腐块（fixture 中文描述建议不纳入取景）。
