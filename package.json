@@ -1,7 +1,7 @@
 {
   "name": "@super_camel/dsh-plugin-panel",
   "description": "DSHP session-scoped skill control and plugin management: session_skill_* tools, /skill-* commands, and a browser panel for skills, session MCP, and host-composition plugins (enable/disable, bundle→patch promote)",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "license": "MIT",
   "author": "super_camel",
   "repository": {

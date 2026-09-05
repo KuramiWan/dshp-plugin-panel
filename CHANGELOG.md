@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-09-05
+
+### Added
+- **检查更新**：打开「插件」页即可自动检查，顶部常驻面板自身版本号与「检查更新」入口；有新版本的面板与插件会高亮提示。
+- **更新应用**：一键更新到新版本，跨大版本更新前会二次确认；支持「全部更新」批量升级。
+- **更新来源提示**：非 npm 官方渠道安装（如 GitHub / 本地路径）的插件只展示版本差异，不做更新。
+
 ## [0.2.2] - 2026-09-02
 
 ### Changed
@@ -149,6 +156,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CONTRIBUTING.md`, CI (lightweight type-check), Keep-a-Changelog file.
 
 [Unreleased]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.2...HEAD
+[0.2.3]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.1.4...v0.2.0
