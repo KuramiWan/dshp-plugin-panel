@@ -300,6 +300,55 @@ export type PluginPanelPluginDemoteResult =
   | { readonly ok: true; readonly id: string; readonly restartRequired: true }
   | { readonly ok: false; readonly reason: string }
 
+// ---- 检查更新 / 应用更新（自身 + 受管用户插件） ----
+
+/** 单行（自身或受管插件）的更新检查视图。 */
+export interface PluginPanelUpdateCheck {
+  /** 行 id（自身行为 dshp-plugin-panel；受管行用其行 id）。 */
+  readonly id: string
+  readonly packageName: string
+  /** 已安装版本（磁盘）；可能缺失（未装）。 */
+  readonly current?: string
+  /** range 内允许的最新（pnpm wanted）。 */
+  readonly wanted?: string
+  /** registry 最新。 */
+  readonly latest?: string
+  /** 是否有可应用更新（声明为 semver range 且 current < latest）。 */
+  readonly updatable: boolean
+  /** 跨 major（latest major ≠ current major）——需额外确认。 */
+  readonly major: boolean
+  /** 声明分类：range（可执行）/ non-range（仅展示差异）/ absent。 */
+  readonly specKind: 'range' | 'non-range' | 'absent'
+}
+
+export interface PluginPanelCheckUpdatesRequest {
+  readonly sessionId: string
+}
+
+export interface PluginPanelCheckUpdatesResult {
+  readonly checks: readonly PluginPanelUpdateCheck[]
+}
+
+export interface PluginPanelPluginUpdateRequest {
+  readonly sessionId: string
+  /** 要更新的包名（panel 自身为 @super_camel/dsh-plugin-panel）。 */
+  readonly name: string
+  /** true = 升到 registry latest（跨 range，需 UI 先确认跨 major）；false = range 内更新。 */
+  readonly latest: boolean
+}
+
+export type PluginPanelPluginUpdateResult =
+  | {
+    readonly ok: true
+    /** 更新后磁盘版本。 */
+    readonly version: string
+    /** 是否跨 major。 */
+    readonly major: boolean
+    /** host 端代码替换需重启生效。 */
+    readonly restartRequired: true
+  }
+  | { readonly ok: false; readonly reason: string }
+
 // ---- 调试 / 枚举（ADR-0010 卡点打通）：列出宿主当前 live sessions ----
 
 /** 单个 live agent/session 的视图。 */
@@ -320,4 +369,3 @@ export interface PluginPanelSessionsRequest {
 export interface PluginPanelSessionsResult {
   readonly sessions: readonly PluginPanelSessionEntry[]
 }
-

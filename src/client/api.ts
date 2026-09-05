@@ -55,6 +55,10 @@ import type {
   PluginPanelPluginPromoteResult,
   PluginPanelPluginDemoteRequest,
   PluginPanelPluginDemoteResult,
+  PluginPanelCheckUpdatesRequest,
+  PluginPanelCheckUpdatesResult,
+  PluginPanelPluginUpdateRequest,
+  PluginPanelPluginUpdateResult,
 } from '../types.ts'
 
 /**
@@ -85,6 +89,8 @@ export interface PluginPanelClient {
   pluginInstall(request: PluginPanelPluginInstallRequest): Promise<PluginPanelPluginInstallResult>
   pluginPromote(request: PluginPanelPluginPromoteRequest): Promise<PluginPanelPluginPromoteResult>
   pluginDemote(request: PluginPanelPluginDemoteRequest): Promise<PluginPanelPluginDemoteResult>
+  checkUpdates(request: PluginPanelCheckUpdatesRequest): Promise<PluginPanelCheckUpdatesResult>
+  pluginUpdate(request: PluginPanelPluginUpdateRequest): Promise<PluginPanelPluginUpdateResult>
 }
 
 /** POST 一个面板方法；HTTP 非 2xx 时抛出（优先取 body 的 reason）。 */
@@ -232,6 +238,14 @@ export function createPluginPanelClient(): PluginPanelClient {
         return (await post('pluginDemote', request)) as PluginPanelPluginDemoteResult
       } catch (error) {
         return foldFail<PluginPanelPluginDemoteResult>(error)
+      }
+    },
+    checkUpdates: request => post('checkUpdates', request) as Promise<PluginPanelCheckUpdatesResult>,
+    pluginUpdate: async (request) => {
+      try {
+        return (await post('pluginUpdate', request)) as PluginPanelPluginUpdateResult
+      } catch (error) {
+        return foldFail<PluginPanelPluginUpdateResult>(error)
       }
     },
   }

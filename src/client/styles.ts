@@ -61,6 +61,7 @@ const CSS = `
 .dshp-section-title{font-size:13px;font-weight:700;line-height:20px;color:var(--dsw-alias-label-primary,#1f2328);margin:16px 0 4px}
 .dshp-section-title:first-of-type{margin-top:6px}
 .dshp-tips{font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary,#9ca3af);border-left:3px solid var(--dsw-alias-border-l2,rgba(128,128,128,.4));padding-left:8px;margin-bottom:2px}
+.dshp-updatebar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px}
 /* 插件页签四类 section：左色条 + 标题底色承载来源语义 */
 .dshp-plugin-section{display:flex;flex-direction:column;gap:6px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.25));border-left-width:3px;border-radius:8px;padding:8px 10px;background:var(--dsw-alias-bg-layer-1,transparent)}
 .dshp-plugin-section-head{display:flex;align-items:center;gap:6px;width:100%;background:transparent;border:0;padding:0;cursor:pointer;color:var(--dsw-alias-label-primary,#1f2328);font-size:12px;line-height:18px;text-align:left}
