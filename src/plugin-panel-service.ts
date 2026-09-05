@@ -77,6 +77,10 @@ import type {
   PluginPanelPluginPromoteResult,
   PluginPanelPluginDemoteRequest,
   PluginPanelPluginDemoteResult,
+  PluginPanelCheckUpdatesRequest,
+  PluginPanelCheckUpdatesResult,
+  PluginPanelPluginUpdateRequest,
+  PluginPanelPluginUpdateResult,
   PluginPanelSessionsRequest,
   PluginPanelSessionsResult,
 } from './types.ts'
@@ -213,6 +217,12 @@ export class PluginPanelService {
           break
         case 'pluginDemote':
           result = this.pluginDemote(payload as unknown as PluginPanelPluginDemoteRequest)
+          break
+        case 'checkUpdates':
+          result = await this.checkUpdates(payload as unknown as PluginPanelCheckUpdatesRequest)
+          break
+        case 'pluginUpdate':
+          result = await this.pluginUpdate(payload as unknown as PluginPanelPluginUpdateRequest)
           break
         case 'sessions':
           result = this.sessions(payload as unknown as PluginPanelSessionsRequest)
@@ -471,6 +481,18 @@ export class PluginPanelService {
     const result = this.plugins.demoteToBundle(request.id)
     if (!result.ok) return { ok: false, reason: result.reason }
     return { ok: true, id: result.id, restartRequired: result.restartRequired }
+  }
+
+  /** 检查更新（自身 + 受管用户插件）：跑 pnpm outdated 并合成视图。自动/手动检查共用。 */
+  async checkUpdates(request: PluginPanelCheckUpdatesRequest): Promise<PluginPanelCheckUpdatesResult> {
+    this.agentOf(request.sessionId)
+    return { checks: await this.plugins.checkUpdates() }
+  }
+
+  /** 应用更新：range 内或 --latest（跨 major 需 UI 先行确认）。 */
+  async pluginUpdate(request: PluginPanelPluginUpdateRequest): Promise<PluginPanelPluginUpdateResult> {
+    this.agentOf(request.sessionId)
+    return await this.plugins.applyUpdate(request.name, request.latest)
   }
 
   /**

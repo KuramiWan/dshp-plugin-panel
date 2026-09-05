@@ -24,7 +24,8 @@
  * （{id,name}），使「停用后再启用」能跨会话还原（与 mcp-manager 白名单文件同模式）。
  */
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, basename } from 'node:path'
+import { spawn } from 'node:child_process'
 import { load as parseYaml, dump as stringifyYaml } from 'js-yaml'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -32,6 +33,7 @@ import type { SessionMcpManager } from './mcp-manager.ts'
 import { defaultDshHome, profileDirFromBaseUrl } from './home.ts'
 import { atomicWriteFileSync, readTextFileSync } from './fs.ts'
 import { isMcpClientConfig, registryFibers } from './registry.ts'
+import { parseOutdatedJson, installedSpecOf, buildUpdateStatus, isMajorBump, type OutdatedEntry } from './update.ts'
 
 /** 面板自身包名与行 id（禁止停）。 */
 export const PANEL_PACKAGE = '@super_camel/dsh-plugin-panel'
@@ -104,6 +106,38 @@ export type PluginPromoteResult =
 
 export type PluginDemoteResult =
   | { ok: true; id: string; restartRequired: true }
+  | { ok: false; reason: string }
+
+/** 某插件（自身或受管）是否有可应用更新。UI 据此显示「更新」按钮/徽标。 */
+export interface PluginUpdateCheck {
+  /** 行 id（自身行为 PANEL_ROW_ID；受管行用其行 id）。 */
+  id: string
+  /** 包名。 */
+  packageName: string
+  /** 已安装版本（磁盘）；可能缺失（未装）。 */
+  current?: string
+  /** range 内允许的最新（pnpm wanted）。 */
+  wanted?: string
+  /** registry 最新。 */
+  latest?: string
+  /** 是否有可应用更新（声明为 semver range 且 current < latest）。 */
+  updatable: boolean
+  /** 跨 major（latest major ≠ current major）——需额外确认。 */
+  major: boolean
+  /** 声明分类：range（可执行）/ non-range（仅展示差异）/ absent。 */
+  specKind: 'range' | 'non-range' | 'absent'
+}
+
+export type PluginUpdateResult =
+  | {
+    ok: true
+    /** 应用后磁盘版本（可能因重启未生效仍为旧版——读磁盘如实返回）。 */
+    version: string
+    /** 更新是否跨 major（仅展示，确认在 UI 层完成）。 */
+    major: boolean
+    /** host 端代码替换需重启生效（自身行为 true；受管 patch/bundle 行 node_modules 替换同样需重启）。 */
+    restartRequired: true
+  }
   | { ok: false; reason: string }
 
 /** 活动 profile 解析失败时退回的默认 profile 名（ADR：当前只管 web profile）。 */
@@ -754,6 +788,172 @@ export class PluginManager {
     } catch (error) {
       return { ok: false, reason: `rewrite ${packageName} failed: ${error instanceof Error ? error.message : String(error)}` }
     }
+  }
+
+  // ---- 检查更新 / 应用更新（自身 + 受管用户插件） ----
+
+  /** 读当前 profile 的 package.json dependencies（可能不存在/损坏 → undefined）。 */
+  private readProfileDependencies(): Record<string, string> | undefined {
+    const pkgFile = join(this.profileDir, 'package.json')
+    if (!existsSync(pkgFile)) return undefined
+    const text = readTextFileSync(pkgFile)
+    if (text === undefined) return undefined
+    try {
+      const pkg = JSON.parse(text) as { dependencies?: unknown }
+      const deps = pkg?.dependencies
+      return deps !== null && typeof deps === 'object' && !Array.isArray(deps)
+        ? deps as Record<string, string>
+        : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  /** 读某包在 profile node_modules 里 package.json 的 version（磁盘真实已装版本）。 */
+  private readInstalledVersion(packageName: string): string | undefined {
+    const pkgFile = join(this.profileDir, 'node_modules', ...packageName.split('/'), 'package.json')
+    if (!existsSync(pkgFile)) return undefined
+    const text = readTextFileSync(pkgFile)
+    if (text === undefined) return undefined
+    try {
+      const pkg = JSON.parse(text) as { version?: unknown }
+      return typeof pkg?.version === 'string' ? pkg.version : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  /** profile 名（目录 basename），供 dsh plugin --profile 使用。 */
+  get profileName(): string {
+    return basename(this.profileDir)
+  }
+
+  /** 在 profile 目录同步跑一个命令（无 shell，捕获输出）。超时上限 120s。 */
+  private runInProfile(args: string[], timeoutMs = 120_000): Promise<{ code: number; stdout: string; stderr: string }> {
+    return new Promise((resolve) => {
+      const child = spawn(args[0], args.slice(1), {
+        cwd: this.profileDir,
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      let stdout = ''
+      let stderr = ''
+      const timer = setTimeout(() => { child.kill('SIGKILL') }, timeoutMs)
+      child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf8') })
+      child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf8') })
+      child.on('error', (error) => {
+        clearTimeout(timer)
+        resolve({ code: -1, stdout, stderr: error.message })
+      })
+      child.on('close', (code) => {
+        clearTimeout(timer)
+        resolve({ code: code ?? -1, stdout, stderr })
+      })
+    })
+  }
+
+  /** 在 profile 目录跑 pnpm outdated --format json（只读；解析见 update.ts）。失败 → 空数组。 */
+  private async fetchOutdated(): Promise<OutdatedEntry[]> {
+    const res = await this.runInProfile(['pnpm', 'outdated', '--format', 'json'])
+    if (res.code !== 0) return []
+    return parseOutdatedJson(res.stdout)
+  }
+
+  /** 收集 profile 里可更新的行（patch/bundle 用户插件 + 面板自身）。 */
+  private collectUpdatableNames(): { id: string; packageName: string; source: 'patch' | 'bundle' | 'self' }[] {
+    const specs = this.readSpecs()
+    const patchRows = this.readPatchRows()
+    const ids = new Set<string>()
+    const out: { id: string; packageName: string; source: 'patch' | 'bundle' | 'self' }[] = []
+    const push = (id: string, packageName: string, source: 'patch' | 'bundle' | 'self'): void => {
+      if (ids.has(id)) return
+      ids.add(id)
+      out.push({ id, packageName, source })
+    }
+    push(PANEL_ROW_ID, PANEL_PACKAGE, 'self')
+    for (const row of patchRows) {
+      const id = String(row.id)
+      if (typeof row.name === 'string' && row.name !== '') push(id, row.name, 'patch')
+    }
+    for (const spec of specs) {
+      if (spec.id === PANEL_ROW_ID || spec.name === MCP_CLIENT_PACKAGE) continue
+      const source = spec.source === 'bundle' ? 'bundle' : 'patch'
+      push(spec.id, spec.name, source)
+    }
+    return out
+  }
+
+  /**
+   * 应用更新（range 内或 --latest）：
+   * - 先校验目标确在 profile dependencies 且为 semver range（否则拒绝）；
+   * - 执行 dsh plugin --profile <name> update [--latest] <pkg>（自带 pnpm + reconcile）；
+   * - 成功后读取磁盘新版本返回（host 端代码需重启生效）。
+   * 并发守卫：同一时刻只允许一个更新在跑，防止互相覆写。
+   */
+  private updating = false
+  async applyUpdate(packageName: string, latest: boolean): Promise<PluginUpdateResult> {
+    if (this.updating) return { ok: false, reason: '已有更新任务在运行，请稍候' }
+    const deps = this.readProfileDependencies() ?? {}
+    const spec = installedSpecOf(packageName, deps)
+    if (spec.kind !== 'range') {
+      const reason = spec.kind === 'absent'
+        ? packageName + ' 不在当前 profile 的依赖声明中，无法更新'
+        : packageName + ' 声明为 ' + spec.spec + '（非 registry 版本），跳过更新'
+      return { ok: false, reason }
+    }
+    const before = this.readInstalledVersion(packageName)
+    const dsh = process.env.DSH_BIN ?? 'dsh'
+    this.updating = true
+    try {
+      const args = ['plugin', '--profile', this.profileName]
+      if (latest) args.push('update', '--latest', packageName)
+      else args.push('update', packageName)
+      const res = await this.runInProfile([dsh, ...args])
+      if (res.code !== 0) {
+        const tail = res.stderr.trim().split('\n').slice(-3).join(' ')
+        return { ok: false, reason: tail !== '' ? tail : '更新命令退出码 ' + res.code }
+      }
+      const after = this.readInstalledVersion(packageName)
+      const version = after ?? before ?? ''
+      if (version === '') return { ok: false, reason: '更新完成但无法读取新版本' }
+      return {
+        ok: true,
+        version,
+        major: isMajorBump(before, after ?? version),
+        restartRequired: true,
+      }
+    } finally {
+      this.updating = false
+    }
+  }
+
+  /** 检查更新：返回每个可更新行的视图（含自身）。纯读取 + pnpm outdated。 */
+  async checkUpdates(): Promise<PluginUpdateCheck[]> {
+    const deps = this.readProfileDependencies() ?? {}
+    const outdatedByName = new Map((await this.fetchOutdated()).map(e => [e.name, e]))
+    const rows = this.collectUpdatableNames()
+    const checks: PluginUpdateCheck[] = []
+    for (const row of rows) {
+      const spec = installedSpecOf(row.packageName, deps)
+      const current = this.readInstalledVersion(row.packageName)
+      const outdated = outdatedByName.get(row.packageName)
+      const status = buildUpdateStatus({
+        current,
+        specKind: spec.kind,
+        outdated,
+      })
+      checks.push({
+        id: row.id,
+        packageName: row.packageName,
+        ...(current === undefined ? {} : { current }),
+        ...(status.wanted === undefined ? {} : { wanted: status.wanted }),
+        ...(status.latest === undefined ? {} : { latest: status.latest }),
+        updatable: status.updatable,
+        major: status.major,
+        specKind: status.specKind,
+      })
+    }
+    return checks
   }
 
   // ---- 状态文件（跨会话记住用户插件行规格） ----

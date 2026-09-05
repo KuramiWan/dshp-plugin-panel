@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { PluginPanelLocaleDict } from './locale.ts'
 import type { PluginPanelClient } from './api.ts'
-import type { PluginPanelPluginEntry, PluginPanelPluginSource, PluginPanelMcpDiscovered } from '../types.ts'
+import type { PluginPanelPluginEntry, PluginPanelPluginSource, PluginPanelMcpDiscovered, PluginPanelUpdateCheck } from '../types.ts'
 import type { PanelNotice } from './notice.ts'
 
 export interface PluginPanelPluginViewProps {
@@ -70,6 +70,10 @@ export function PluginPanelPluginView(props: PluginPanelPluginViewProps) {
   /** 顶栏「添加 ▾」下拉开关。单一态，菜单里点条目展开对应 form/mcp 列表。 */
   const [addOpen, setAddOpen] = useState(false)
   const addWrapRef = useRef<HTMLDivElement | null>(null)
+  /** 检查更新结果（自身 + 受管行）。null = 尚未检查/检查失败。 */
+  const [updates, setUpdates] = useState<PluginPanelUpdateCheck[] | null>(null)
+  /** 正在应用的包名（单个/全部）。 */
+  const [updating, setUpdating] = useState<string | null>(null)
 
   const refresh = (): void => {
     if (client === undefined) return
@@ -89,6 +93,12 @@ export function PluginPanelPluginView(props: PluginPanelPluginViewProps) {
 
   useEffect(() => {
     refresh()
+    // 打开面板即自动检查一次（Q3A：自动检查失败静默）。client 缺失/失败不打扰。
+    if (client !== undefined) {
+      void client.checkUpdates({ sessionId }).then(r => {
+        setUpdates([...(r.checks ?? [])])
+      }).catch(() => { /* 自动失败静默 */ })
+    }
   }, [sessionId])
 
   /** 点击添加下拉外部时关闭菜单。 */
@@ -155,6 +165,84 @@ export function PluginPanelPluginView(props: PluginPanelPluginViewProps) {
         },
       },
     )
+  }
+
+  /** 简单插值：把模板里的 {key} 替换为传入值。 */
+  const fmt = (template: string, vars: Record<string, string>): string =>
+    template.replace(/\{([a-zA-Z]+)\}/g, (_, key: string) => vars[key] ?? '')
+
+  const runCheckUpdates = (manual: boolean): void => {
+    if (busy || updating !== null || client === undefined) return
+    setBusy(true)
+    void client.checkUpdates({ sessionId }).then(r => {
+      setUpdates([...(r.checks ?? [])])
+      if (manual) {
+        const updatable = (r.checks ?? []).filter(x => x.updatable)
+        setNotice(updatable.length === 0
+          ? { kind: 'ok', text: t('plugin.update.none') }
+          : { kind: 'ok', text: t('plugin.update.available') + ': ' + updatable.map(x => x.packageName).join(', ') })
+      }
+    }).catch((e) => {
+      if (manual) setNotice({ kind: 'error', text: t('plugin.update.checkFailed') + ': ' + String(e) })
+      // 自动检查失败静默（Q16a）
+    }).finally(() => setBusy(false))
+  }
+
+  /** 应用单个更新：跨 major 先确认；range 内直接确认。 */
+  const runUpdate = (check: PluginPanelUpdateCheck): void => {
+    if (busy || updating !== null || client === undefined || !check.updatable) return
+    if (check.specKind !== 'range') return
+    if (check.major && !window.confirm(fmt(t('plugin.update.major.confirm'), { cur: check.current ?? '', new: check.latest ?? '' }))) return
+    if (!window.confirm(fmt(t('plugin.update.confirm'), { name: check.packageName, version: check.latest ?? '' }))) return
+    setUpdating(check.packageName)
+    void client.pluginUpdate({ sessionId, name: check.packageName, latest: check.major }).then((r) => {
+      setUpdating(null)
+      if (r.ok) {
+        setNotice({ kind: 'ok', text: fmt(t('plugin.update.restart'), { version: r.version }) })
+        // 更新后重查，让自身/行版本立即反映（磁盘新版本；host 重启后生效）。
+        void client.checkUpdates({ sessionId }).then(rr => setUpdates([...(rr.checks ?? [])])).catch(() => {})
+      } else {
+        setNotice({ kind: 'error', text: t('plugin.update.failed') + ': ' + r.reason })
+      }
+    }).catch((e) => {
+      setUpdating(null)
+      setNotice({ kind: 'error', text: t('plugin.update.failed') + ': ' + String(e) })
+    })
+  }
+
+  /** 全部更新：仅更新「有新版且非跨 major」的行（跨 major 留待单行确认）。 */
+  const runUpdateAll = (): void => {
+    if (busy || updating !== null || client === undefined) return
+    const targets = (updates ?? []).filter(x => x.updatable && x.specKind === 'range' && !x.major)
+    if (targets.length === 0) {
+      setNotice({ kind: 'error', text: t('plugin.update.none') })
+      return
+    }
+    if (!window.confirm(fmt(t('plugin.update.confirm'), { name: targets.map(x => x.packageName).join(', '), version: targets.map(x => x.latest ?? '').join(', ') }))) return
+    const names = targets.map(x => x.packageName)
+    setUpdating('__all__')
+    // 逐个串行执行（host 端 updating 守卫一次只放行一个，避免并发互相拒绝）。
+    void (async () => {
+      const failed: string[] = []
+      for (const name of names) {
+        try {
+          const rr = await client!.pluginUpdate({ sessionId, name, latest: false })
+          if (!rr.ok) failed.push((rr as { reason?: string }).reason ?? name)
+        } catch (e) {
+          failed.push(String(e))
+        }
+      }
+      setUpdating(null)
+      if (failed.length === 0) {
+        setNotice({ kind: 'ok', text: t('plugin.update.restartAll') })
+      } else {
+        setNotice({ kind: 'error', text: t('plugin.update.failed') + ': ' + failed.join('; ') })
+      }
+      try {
+        const rr = await client!.checkUpdates({ sessionId })
+        setUpdates([...(rr.checks ?? [])])
+      } catch { /* 重查失败不打扰 */ }
+    })()
   }
 
   const runPromote = (entry: PluginPanelPluginEntry): void => {
@@ -246,6 +334,15 @@ export function PluginPanelPluginView(props: PluginPanelPluginViewProps) {
                 {p.active
                   ? <button className="dshp-btn dshp-btn-danger" onClick={() => runToggle(p, false)} disabled={busy}>{t('plugin.action.disable')}</button>
                   : <button className="dshp-btn dshp-btn-primary" onClick={() => runToggle(p, true)} disabled={busy}>{t('plugin.action.enable')}</button>}
+                {p.source !== 'mcp' && (() => {
+                  const up = (updates ?? []).find(u => u.packageName === p.packageName && u.updatable)
+                  if (up === undefined) return null
+                  return (
+                    <button className="dshp-btn dshp-btn-primary" onClick={() => runUpdate(up)} disabled={busy || updating !== null}>
+                      {updating === up.packageName ? t('plugin.update.updating') : t('plugin.update.action') + (up.latest !== undefined ? ' ' + up.latest : '')}
+                    </button>
+                  )
+                })()}
                 {p.source === 'mcp' && (
                   <>
                     <button className="dshp-btn" onClick={() => runCheck(p)} disabled={checking !== null}>
@@ -272,7 +369,21 @@ export function PluginPanelPluginView(props: PluginPanelPluginViewProps) {
               </span>
             </>
           ) : (
-            p.packageName !== undefined && <span className="dshp-tag">{p.packageName}</span>
+            <>
+              {p.packageName !== undefined && <span className="dshp-tag">{p.packageName}</span>}
+              {p.packageName !== undefined && (() => {
+                const up = (updates ?? []).find(u => u.packageName === p.packageName)
+                if (up === undefined) return null
+                return (
+                  <>
+                    {up.current !== undefined && <span className="dshp-tag dshp-tag-eco">{up.current}</span>}
+                    {up.specKind === 'non-range' && up.updatable === false && up.latest !== undefined && (
+                      <span className="dshp-tag" title={up.specKind === 'non-range' ? t('plugin.update.nonNpm') : undefined}>{t('plugin.update.nonNpm')}</span>
+                    )}
+                  </>
+                )
+              })()}
+            </>
           )}
           {p.protected && <span className="dshp-tag dshp-tag-eco">{t('plugin.badge.protected')}</span>}
         </div>
@@ -355,6 +466,30 @@ export function PluginPanelPluginView(props: PluginPanelPluginViewProps) {
         </button>
       </div>
       {helpOpen && <div className="dshp-tips">{t('plugin.tips')}</div>}
+
+      {/* 版本 + 检查更新 / 全部更新（自身与受管共用一套 outdated 检查） */}
+      <div className="dshp-updatebar">
+        {(() => {
+          const self = (updates ?? []).find(u => u.packageName === '@super_camel/dsh-plugin-panel')
+          const anyUpdatable = (updates ?? []).some(u => u.updatable)
+          return (
+            <>
+              <span className="dshp-tag dshp-tag-eco">{t('plugin.version')}: {self?.current ?? '—'}</span>
+              {self !== undefined && self.updatable && (
+                <span className="dshp-tag dshp-tag-error">{self.latest !== undefined ? t('plugin.update.available') + ' ' + self.latest : t('plugin.update.available')}</span>
+              )}
+              {anyUpdatable && (
+                <button className="dshp-btn" onClick={runUpdateAll} disabled={busy || updating !== null}>
+                  {updating === '__all__' ? t('plugin.update.updating') : t('plugin.update.all')}
+                </button>
+              )}
+              <button className="dshp-btn" onClick={() => runCheckUpdates(true)} disabled={busy || updating !== null}>
+                {busy && updates === null ? t('plugin.update.checking') : t('plugin.update.check')}
+              </button>
+            </>
+          )
+        })()}
+      </div>
 
       {installOpen && (
         <div className="dshp-form">
