@@ -459,12 +459,12 @@ export class PluginPanelService {
     return { ok: true, id: result.id, enabled: result.enabled }
   }
 
-  /** 新增/启用一个用户插件（写一条 insert 行，id + 包名）。 */
+  /** 新增一个用户插件（默认只登记规格不启用；enabled=true 立即写 insert 行热挂载）。 */
   pluginInstall(request: PluginPanelPluginInstallRequest): PluginPanelPluginInstallResult {
     this.agentOf(request.sessionId)
-    const result = this.plugins.install(request.id, request.name)
+    const result = this.plugins.install(request.id, request.name, request.enabled ?? false)
     if (!result.ok) return { ok: false, reason: result.reason }
-    return { ok: true, id: result.id }
+    return { ok: true, id: result.id, enabled: result.enabled }
   }
 
   /** 把 bundle 行提升为 patch 行（热插拔；冷迁移，需重启一次）。 */

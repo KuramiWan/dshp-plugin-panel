@@ -63,6 +63,8 @@ export function PluginPanelPluginView(props: PluginPanelPluginViewProps) {
   const [installOpen, setInstallOpen] = useState(false)
   const [installId, setInstallId] = useState('')
   const [installName, setInstallName] = useState('')
+  // 默认不勾选：新增只登记规格（已停用），点「启用」才热挂载——新增即启用不符合意图。
+  const [installEnabled, setInstallEnabled] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
   const [coreOpen, setCoreOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -155,13 +157,14 @@ export function PluginPanelPluginView(props: PluginPanelPluginViewProps) {
   const runInstall = (): void => {
     if (installId.trim() === '' || installName.trim() === '') return
     runAction(
-      () => client!.pluginInstall({ sessionId, id: installId.trim(), name: installName.trim() }),
-      (r) => `${t('plugin.notice.installed')}: ${r.id}`,
+      () => client!.pluginInstall({ sessionId, id: installId.trim(), name: installName.trim(), enabled: installEnabled }),
+      (r) => `${r.enabled ? t('plugin.notice.installedEnabled') : t('plugin.notice.installedDisabled')}: ${r.id}`,
       {
         afterOk: () => {
           setInstallOpen(false)
           setInstallId('')
           setInstallName('')
+          setInstallEnabled(false)
         },
       },
     )
@@ -447,7 +450,7 @@ export function PluginPanelPluginView(props: PluginPanelPluginViewProps) {
           {addOpen && (
             <div className="dshp-add-menu" role="menu">
               <button
-                onClick={() => { setAddOpen(false); setInstallOpen(true); setMcpOpen(false) }}
+                onClick={() => { setAddOpen(false); setInstallOpen(true); setInstallEnabled(false); setMcpOpen(false) }}
                 disabled={busy}
               >
                 {t('plugin.action.add.menu.plugin')}
@@ -509,6 +512,17 @@ export function PluginPanelPluginView(props: PluginPanelPluginViewProps) {
               value={installName}
               onChange={event => setInstallName(event.target.value)}
             />
+          </div>
+          <div className="dshp-field">
+            <label className="dshp-check">
+              <input
+                type="checkbox"
+                checked={installEnabled}
+                onChange={event => setInstallEnabled(event.target.checked)}
+              />
+              <span>{t('plugin.install.enabled')}</span>
+            </label>
+            <div className="dshp-hint">{t('plugin.install.enabledHint')}</div>
           </div>
           <div className="dshp-actions">
             <button className="dshp-btn dshp-btn-primary" disabled={busy || installId.trim() === '' || installName.trim() === ''} onClick={runInstall}>

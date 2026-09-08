@@ -97,7 +97,7 @@ export type PluginToggleResult =
   | { ok: false; reason: string }
 
 export type PluginInstallResult =
-  | { ok: true; id: string }
+  | { ok: true; id: string; enabled: boolean }
   | { ok: false; reason: string }
 
 export type PluginPromoteResult =
@@ -572,8 +572,13 @@ export class PluginManager {
     return { ok: true, id, enabled: true }
   }
 
-  /** 新增/启用一个用户插件：写一条 insert 行（id + 包名）。 */
-  install(id: string, name: string): PluginInstallResult {
+  /**
+   * 新增一个用户插件（默认不启用）：默认只把行规格（id + 包名）记入状态文件，
+   * 不写组合层——行以「已停用」出现在热插拔段，点「启用」才写 insert 行热挂载。
+   * 传 enabled=true 才直接写 insert 行（触发热重载、立即挂载）。
+   * 新增即启用曾导致插件未经确认就热挂载进宿主，不符合「先登记、后启用」的意图。
+   */
+  install(id: string, name: string, enabled = false): PluginInstallResult {
     if (typeof id !== 'string' || id.trim() === '' || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) {
       return { ok: false, reason: 'id 需为 1-64 位 [A-Za-z0-9_-]' }
     }
@@ -581,13 +586,32 @@ export class PluginManager {
       return { ok: false, reason: 'name（包名）不能为空' }
     }
     if (this.isSelf(id)) return { ok: false, reason: '禁止对面板自身执行安装' }
+    const trimmedId = id.trim()
+    const trimmedName = name.trim()
+    // 活动行已存在 → 拒绝（不重复挂载）；默认新增只登记规格，不写组合层。
+    if (this.readPatchRows().some(r => String(r.id) === trimmedId)) {
+      return { ok: false, reason: `"${trimmedId}" 已在 patch 中` }
+    }
+    if (!enabled) {
+      // 仅登记规格：list() 的 specs 视图把它显示为已停用 patch 行，启用走 enable()。
+      // 已有同名规格则更新包名（幂等，不重复记条目）。
+      const specs = this.readSpecs()
+      const spec = specs.find(s => s.id === trimmedId)
+      if (spec === undefined) {
+        specs.push({ id: trimmedId, name: trimmedName, source: 'patch' })
+      } else {
+        spec.name = trimmedName
+        spec.source = 'patch'
+      }
+      this.persistSpecs(specs)
+      return { ok: true, id: trimmedId, enabled: false }
+    }
     const rows = this.readPatchRows()
-    if (rows.some(r => String(r.id) === id)) return { ok: false, reason: `"${id}" 已在 patch 中` }
-    rows.push({ id: id.trim(), name: name.trim() })
+    rows.push({ id: trimmedId, name: trimmedName })
     const result = this.writePatch(rows)
     if (!result.ok) return { ok: false, reason: result.reason }
     this.syncSpecs()
-    return { ok: true, id: id.trim() }
+    return { ok: true, id: trimmedId, enabled: true }
   }
 
   // ---- bundle → patch 提升（冷迁移，需重启一次） ----

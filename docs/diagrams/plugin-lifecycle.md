@@ -11,7 +11,7 @@
 ```mermaid
 stateDiagram-v2
     [*] --> bundle: 冷挂载（dsh.profile.bundles 声明，npm/plugin add）
-    [*] --> patch: 热挂载（install / plugin add 写 insert 行）
+    [*] --> patch_disabled: install（默认登记规格，不写组合层；勾选「立即启用」/ enabled=true 则直接进 patch）
 
     bundle: bundle 冷挂载（运行中）
     bundle --> patch_pending: promoteToPatch（摘 bundles + 删 dsh.bundle 声明 → 待重启）
@@ -40,7 +40,7 @@ stateDiagram-v2
 - `bundle` / `patch` / `patch_disabled` / `bundle_disabled`：`source` 分别为 `bundle` / `patch` / `patch`（spec） / `bundle`（spec），`active` 分别为 true / true / false / false
 - `patch_pending`：`pendingPromote: true`，重启后用户点「启用」写 patch 行
 - `bundle_demoting`：`pendingDemote: true`，重启后 `settlePendingDemote()`（list() 开头）判据：patch 行无该 id **且** 包在 bundles **且** fiber 以用户 bundle 源回归 → 清理标记
-- **新插件直接进 patch**（install 写 insert 行，无 bundle 阶段）；要转冷挂载则 demote
+- **新插件默认进 patch_disabled**（install 只登记规格到 .dshp-plugins.json；enabled=true 才直接写 insert 行进 patch）；要转冷挂载则 demote
 - 停用后若无规格记录（从未 install 过、仅手动写 patch 行又被停），行移除后从视图消失——`syncSpecs` 只记录"面板管理过"的行
 
 **未确认**：core 行的状态迁移不在图中（只读、不可操作）；mcp 行的启停=会话连接/断开，见数据流图。

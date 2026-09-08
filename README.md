@@ -105,7 +105,7 @@ The **Plugins** tab lists the plugins DSH has loaded, grouped by how they are mo
 
 ### Adding a plugin
 
-The **Add plugin** button lets you register a plugin from the panel — give its package name (or an id) and the panel installs and mounts it, so it appears among the managed plugins.
+The **Add plugin** button lets you register a plugin from the panel — give its package name (or an id). The plugin is registered **disabled** by default (only the panel state file is written; `cordis.patch.yml` is untouched and no hot reload fires) and appears under **Hot-pluggable**; click **Enable** to hot-load it into the host. Tick **Enable immediately after adding** to mount it right away instead.
 
 ### Making a bundle plugin hot-pluggable
 

@@ -49,11 +49,12 @@ function patchFile(root: string): string {
   return join(root, 'cordis.patch.yml')
 }
 
-test('install: 写入一条 insert 行到 cordis.patch.yml（顶层数组）', () => {
+test('install(enabled=true): 写入一条 insert 行到 cordis.patch.yml（顶层数组）', () => {
   const { root, manager } = makeManager()
   try {
-    const res = manager.install('my-plugin', '@scope/my-plugin')
+    const res = manager.install('my-plugin', '@scope/my-plugin', true)
     assert.equal(res.ok, true)
+    assert.equal((res as { enabled?: boolean }).enabled, true)
     const parsed = parseYaml(readFileSync(patchFile(root), 'utf8')) as Array<{ insert?: unknown }>
     assert.ok(Array.isArray(parsed))
     const rows = (parsed[0]?.insert ?? []) as Array<{ id: string; name: string }>
@@ -63,10 +64,50 @@ test('install: 写入一条 insert 行到 cordis.patch.yml（顶层数组）', (
   }
 })
 
-test('install: 重复 id 拒绝（不重复挂载）', () => {
+test('install: 默认只登记规格不写 patch 行（新增即启用不符合意图）', async () => {
+  const { root, manager } = makeManager()
+  try {
+    const res = manager.install('my-plugin', '@scope/my-plugin')
+    assert.equal(res.ok, true)
+    assert.equal((res as { enabled?: boolean }).enabled, false, '默认安装应返回 enabled=false')
+    // 1. 不写组合层：patch 文件不应被创建（无热挂载、无热重载副作用）
+    assert.ok(!existsSync(patchFile(root)), '默认安装不应写 cordis.patch.yml')
+    // 2. 规格已登记（source=patch），list() 显示为已停用且可管理的 patch 行
+    const specs = JSON.parse(readFileSync(join(root, '.dshp-plugins.json'), 'utf8')).plugins as Array<{ id: string; name: string; source: string }>
+    assert.deepEqual(specs, [{ id: 'my-plugin', name: '@scope/my-plugin', source: 'patch' }])
+    const view = manager.list().find(v => v.id === 'my-plugin')
+    assert.ok(view !== undefined, '已登记规格应出现在视图中')
+    assert.equal(view?.source, 'patch')
+    assert.equal(view?.active, false, '默认安装应显示为已停用')
+    assert.equal(view?.manageable, true)
+    assert.equal(view?.packageName, '@scope/my-plugin')
+    // 3. 点「启用」→ 写 insert 行热挂载
+    const en = await manager.enable('my-plugin')
+    assert.equal(en.ok, true)
+    const parsed = parseYaml(readFileSync(patchFile(root), 'utf8')) as Array<{ insert?: Array<{ id: string }> }>
+    assert.ok((parsed[0]?.insert ?? []).some(r => r.id === 'my-plugin'), '启用后应写入 insert 行')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('install: 默认重复登记幂等（更新包名，不重复记条目）', () => {
   const { root, manager } = makeManager()
   try {
     assert.equal(manager.install('p', '@x/p').ok, true)
+    const res = manager.install('p', '@x/renamed')
+    assert.equal(res.ok, true, '默认登记重复 id 应幂等成功')
+    const specs = JSON.parse(readFileSync(join(root, '.dshp-plugins.json'), 'utf8')).plugins as Array<{ id: string; name: string }>
+    assert.deepEqual(specs, [{ id: 'p', name: '@x/renamed', source: 'patch' }])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('install: 活动行已存在时拒绝（不重复挂载）', () => {
+  const { root, manager } = makeManager()
+  try {
+    assert.equal(manager.install('p', '@x/p', true).ok, true)
     const res = manager.install('p', '@x/p')
     assert.equal(res.ok, false)
     assert.match((res as { reason: string }).reason, /已在 patch/)
@@ -100,7 +141,7 @@ test('writePatch: 写前备份到 .bak，新内容 YAML 可解析', () => {
   try {
     // 先写一个 patch，制造「备份旧内容」的场景
     writeFileSync(patchFile(root), '- insert:\n  - id: old\n    name: "@x/old"\n', 'utf8')
-    manager.install('new-p', '@x/new')
+    manager.install('new-p', '@x/new', true)
     assert.ok(existsSync(patchFile(root) + '.bak'), '应生成备份')
     const backup = readFileSync(patchFile(root) + '.bak', 'utf8')
     assert.match(backup, /old/)
@@ -117,7 +158,7 @@ test('writePatch: 保留非 insert 的用户手工 patch 选项', () => {
   try {
     // 含一个非 insert 的顶层选项（如 schema/version 注释项）
     writeFileSync(patchFile(root), '- insert:\n    - id: keep\n      name: "@x/keep"\n- schema: 1\n', 'utf8')
-    manager.install('new-p', '@x/new')
+    manager.install('new-p', '@x/new', true)
     const parsed = parseYaml(readFileSync(patchFile(root), 'utf8')) as Array<Record<string, unknown>>
     const hasSchema = parsed.some(opt => opt && typeof opt === 'object' && 'schema' in opt)
     assert.ok(hasSchema, '非 insert 选项应被保留')
@@ -191,7 +232,7 @@ test('H1: install 不应丢弃既有非字符串 id 的 patch 行（数据保护
       '',
     ].join('\n'), 'utf8')
 
-    manager.install('new-p', '@x/new')
+    manager.install('new-p', '@x/new', true)
 
     const parsed = parseYaml(readFileSync(patchFile(root), 'utf8')) as Array<{ insert?: Array<{ id: unknown; name: unknown }> }>
     const allRows = parsed.flatMap(o => o.insert ?? [])
@@ -282,8 +323,8 @@ test('M3: patch 里的 mcp 桥接行不应被当 patch 行管理（启停报"已
       '',
     ].join('\n'), 'utf8')
 
-    // 触发 syncSpecs（install 会调它），模拟"环境曾启停过"后的状态文件写入。
-    manager.install('another', '@x/another')
+    // 触发 syncSpecs（enabled=true 的 install 会调它），模拟"环境曾启停过"后的状态文件写入。
+    manager.install('another', '@x/another', true)
 
     // 1. 状态文件不应把 mcp 桥接行记为 patch 规格
     const stateFile = join(root, '.dshp-plugins.json')

@@ -38,7 +38,8 @@ flowchart TD
     CL -->|"POST /plugin-panel/pluginToggle|install|promote|demote"| SVC
     SVC -->|"enable/disable/install/promoteToPatch/demoteToBundle"| PM
 
-    PM -->|"install/enable: 写 insert 行"| PATCH
+    PM -->|"enable（或 install+enabled=true）: 写 insert 行"| PATCH
+    PM -->|"install 默认: 只写规格（不写组合层）"| STATE
     PM -->|"disable/promote: 摘 bundles / demote: 加回"| BUNDLES
     PM -->|"promote: 删 dsh.bundle 声明（备份 .bak）<br/>demote: 恢复声明"| PKGB
     PM -->|"syncSpecs/规格持久化"| STATE
@@ -61,5 +62,6 @@ flowchart TD
 - **demote 前先 probe**：`probeBundleDeclaration` 只读校验（现有声明 / .bak / 包内 patch 文件三选一）通过才动 patch 行，避免半途失败留不一致态
 - **M2**：停用 patch 行时若同包也在 bundles（reconcile 自动加回的双挂载），原子撤两处，标注 restartRequired
 - **M8**：停用前先记录规格到 state 文件，保证停用后可重新启用
+- **install 默认只登记规格**：新增插件默认写 state 文件（视图显示为已停用），不写 patch / bundles、不触发热重载；写 insert 行只发生在显式启用（UI 勾选「添加后立即启用」或 enable）
 
 **未确认**：`ds-harness-remote`（生产 bundles 里的第 4 个包）不是本插件管理范围，图上未画其内部。

@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **新增热插拔插件默认不再立即启用**：「新增插件」默认只把插件登记进面板状态文件（在「热插拔」段显示为已停用），不改 `cordis.patch.yml`、不触发热重载；点「启用」才热挂载进宿主。对话框新增「添加后立即启用」勾选（默认不勾选），需要旧的一次到位行为时显式勾选。
+
 ## [0.2.3] - 2026-09-05
 
 ### Added

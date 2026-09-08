@@ -276,10 +276,12 @@ export interface PluginPanelPluginInstallRequest {
   readonly sessionId: string
   readonly id: string
   readonly name: string
+  /** true = 添加后立即写 insert 行热挂载；缺省 false = 只登记规格（已停用，点「启用」再挂载）。 */
+  readonly enabled?: boolean
 }
 
 export type PluginPanelPluginInstallResult =
-  | { readonly ok: true; readonly id: string }
+  | { readonly ok: true; readonly id: string; readonly enabled: boolean }
   | { readonly ok: false; readonly reason: string }
 
 export interface PluginPanelPluginPromoteRequest {
