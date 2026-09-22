@@ -1,0 +1,374 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "dshp-plugin-panel runtime architecture",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/KuramiWan/dshp-plugin-panel",
+      "provider": "github",
+      "revision": "8e135c52e33f408c61d3c9b5563028ac41730a16"
+    },
+    "views": [
+      {
+        "id": "panel-path",
+        "label": "Panel path",
+        "focus": [
+          "ui",
+          "svc",
+          "plugins",
+          "compose",
+          "registry"
+        ],
+        "note": "From a panel click to the composition write and hot mount."
+      },
+      {
+        "id": "session-capabilities",
+        "label": "Session-level",
+        "focus": [
+          "agent",
+          "sessioncap",
+          "pool",
+          "sessfile"
+        ],
+        "note": "Skills and MCP stay per session; introduce only registers."
+      },
+      {
+        "id": "write-boundary",
+        "label": "Composition writes",
+        "focus": [
+          "sessioncap",
+          "registry",
+          "plugins",
+          "compose"
+        ],
+        "note": "Write protection, atomic writes, and the watcher."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "agent",
+      "type": "external",
+      "label": "Agent / slash commands",
+      "sublabel": "session_skill_* · session_mcp_*",
+      "pos": [
+        30,
+        80
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/tools.ts"
+        },
+        {
+          "path": "src/commands.ts"
+        }
+      ]
+    },
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "Plugin panel UI",
+      "sublabel": "React · Skills / Plugins tabs",
+      "pos": [
+        30,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/client/view.tsx"
+        },
+        {
+          "path": "src/client/plugin-view.tsx"
+        }
+      ]
+    },
+    {
+      "id": "svc",
+      "type": "backend",
+      "label": "PluginPanelService",
+      "sublabel": "webServer · /plugin-panel/*",
+      "pos": [
+        330,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/plugin-panel-service.ts",
+          "line": 1,
+          "label": "HTTP routes"
+        }
+      ]
+    },
+    {
+      "id": "sessioncap",
+      "type": "backend",
+      "label": "Session capability manager",
+      "sublabel": "SessionSkillStore · McpManager",
+      "pos": [
+        590,
+        100
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/actions.ts",
+          "line": 107,
+          "end_line": 116,
+          "label": "register"
+        },
+        {
+          "path": "src/mcp-manager.ts"
+        }
+      ]
+    },
+    {
+      "id": "registry",
+      "type": "backend",
+      "label": "cordis composition",
+      "sublabel": "registry fibers · hot mount",
+      "pos": [
+        590,
+        300
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/plugin-manager.ts",
+          "line": 7,
+          "end_line": 9,
+          "label": "registry walk"
+        }
+      ]
+    },
+    {
+      "id": "plugins",
+      "type": "backend",
+      "label": "Host plugin manager",
+      "sublabel": "PluginManager · write guard",
+      "pos": [
+        590,
+        500
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/plugin-manager.ts",
+          "line": 1,
+          "end_line": 5,
+          "label": "domain model"
+        }
+      ]
+    },
+    {
+      "id": "pool",
+      "type": "database",
+      "label": "Skill pool",
+      "sublabel": "~/.dsh/.skill-pool/local/",
+      "pos": [
+        880,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/pool.ts",
+          "line": 56,
+          "end_line": 63,
+          "label": "poolRoot"
+        }
+      ]
+    },
+    {
+      "id": "sessfile",
+      "type": "database",
+      "label": "Session introduce-set",
+      "sublabel": ".session-skills/<sessionId>.json",
+      "pos": [
+        880,
+        220
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/handles.ts",
+          "line": 16,
+          "end_line": 26,
+          "label": "persist path"
+        }
+      ]
+    },
+    {
+      "id": "compose",
+      "type": "database",
+      "label": "Composition files",
+      "sublabel": "patch.yml · bundles · node_modules",
+      "pos": [
+        880,
+        500
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/plugin-manager.ts",
+          "label": "composition writes"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "DSH host process (web profile)",
+      "wraps": [
+        "svc",
+        "sessioncap",
+        "registry",
+        "plugins"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "$DSH_HOME · disk (composition write boundary)",
+      "wraps": [
+        "pool",
+        "sessfile",
+        "compose"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "panel-to-service",
+      "from": "ui",
+      "to": "svc",
+      "label": "POST /plugin-panel/*",
+      "variant": "emphasis"
+    },
+    {
+      "id": "agent-to-session",
+      "from": "agent",
+      "to": "sessioncap",
+      "label": "register / connect (session)",
+      "labelAt": [
+        235,
+        152
+      ]
+    },
+    {
+      "id": "service-to-session",
+      "from": "svc",
+      "to": "sessioncap",
+      "label": "skill* / mcp*"
+    },
+    {
+      "id": "service-to-plugins",
+      "from": "svc",
+      "to": "plugins",
+      "label": "plugin*"
+    },
+    {
+      "id": "session-to-registry",
+      "from": "sessioncap",
+      "to": "registry",
+      "label": "mcp-client",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "session-to-pool",
+      "from": "sessioncap",
+      "to": "pool",
+      "label": "register, no copy"
+    },
+    {
+      "id": "session-to-sessfile",
+      "from": "sessioncap",
+      "to": "sessfile",
+      "label": "persist · replay"
+    },
+    {
+      "id": "plugins-to-compose",
+      "from": "plugins",
+      "to": "compose",
+      "label": "write patch / bundles"
+    },
+    {
+      "id": "compose-to-registry",
+      "from": "compose",
+      "to": "registry",
+      "label": "watcher hot reload",
+      "fromSide": "top",
+      "toSide": "right"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Three faces, one core",
+      "items": [
+        "Panel, /skill-* commands, and session_skill_* tools share one SessionSkillStore",
+        "Skills and MCP are session-level; both live in the agent context",
+        "Introduce is pure registration: resourceBase points back at the pool"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Two kinds of mount",
+      "items": [
+        "patch: cordis.patch.yml insert row, watcher hot reload",
+        "bundle: dsh.profile.bundles, read at startup, needs a restart",
+        "The panel itself is mounted by the same composition layer"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Write protection",
+      "items": [
+        "Every write: .bak backup → parse check → temp file + rename",
+        "Failure rolls back; mcp select restores the global row",
+        "promote edits node_modules in place; pnpm update reverts it"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Session isolation",
+      "items": [
+        "Introduce-set lands in <poolRoot>/.session-skills/<sessionId>.json",
+        "Only sessions starting with source==='resume' replay it",
+        "A same-name skill shadows the global one in that session only"
+      ]
+    }
+  ]
+}

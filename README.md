@@ -8,7 +8,7 @@
 
 🚀 Session-level skills | Visual panel | Plugin & MCP management | No restart for most changes | One-command install
 
-[Highlights](#highlights) | [Who it is for](#who-it-is-for) | [Quick start](#quick-start) | [Skill management](#skill-management) | [Plugins and MCP](#plugins-and-mcp) | [How it works](#how-it-works) | [Troubleshooting](#troubleshooting) | [FAQ](#faq)
+[Highlights](#highlights) | [Who it is for](#who-it-is-for) | [Quick start](#quick-start) | [Skill management](#skill-management) | [Plugins and MCP](#plugins-and-mcp) | [How it works](#how-it-works) | [Architecture](#architecture) | [Troubleshooting](#troubleshooting) | [FAQ](#faq)
 
 🌐 **English** | [中文](README.zh.md)
 
@@ -145,6 +145,18 @@ The model can manage session MCP itself with `session_mcp_list`, `session_mcp_co
 
 DSH's own model is *everything is a plugin*: the host is a composition whose loadable rows (cordis composition lines) are all plugins — a skill is the document capability a plugin provides, MCP is an `mcp-client` composition row, and a host plugin is a `patch`/`bundle` row. The panel does not introduce a second model: it gives that composition layer a **management view**, and only distinguishes *skills vs plugins* as presentation when you manage them.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/how-it-works.dark.png">
+    <img alt="How the Plugin Panel works: dshp-plugin-panel exposes one management view over the DSH composition layer; session-level skill and MCP capabilities live in the agent context, while process-level patch and bundle host plugins live in the host" src="docs/assets/how-it-works.light.png" width="900">
+  </picture>
+</p>
+
+> Interactive version: [`how-it-works.architecture.html`](./docs/diagrams/how-it-works.architecture.html) · Source: [`how-it-works.architecture.json`](./docs/diagrams/how-it-works.architecture.json)
+
+<details>
+<summary>Text version (Mermaid)</summary>
+
 ```mermaid
 flowchart TB
     subgraph PANEL["dshp-plugin-panel"]
@@ -167,12 +179,27 @@ flowchart TB
     VIEW -.->|"same semantic layer, presentation only"| FRONT
 ```
 
+</details>
+
 1. **Everything is a plugin.** Skills, MCP, and host plugins are all loadable rows of the same DSH composition; they differ in *where they mount* — not in kind.
 2. **Two mount dimensions.** Session-level capabilities (an introduced skill, a connected MCP) live in the agent context and are isolated per session; process-level host plugins are loaded into the host and affect everything.
 3. **Introducing a skill is a pure registration.** No files are copied — the registration points back at the pool folder (`~/.dsh/.skill-pool/local/`). The introduced set is saved to `<poolRoot>/.session-skills/<sessionId>.json` and replayed automatically when a **resumed** session comes back after a host restart.
 4. **The frontend only presents the split.** The same underlying capabilities are shown as a **Skills** tab and a **Plugins** tab; the slash commands and model tools are the same management surface without the GUI.
 
 A fuller diagram — exact paths, the resume trigger, shadow overrides, and the patch/bundle mounts — lives in [`docs/diagrams/capability-mount.md`](./docs/diagrams/capability-mount.md).
+
+## Architecture
+
+The runtime path behind that management view: the panel UI calls `PluginPanelService` over same-process HTTP; session-level skill and MCP operations go through the session capability manager, process-level plugin operations go through the host plugin manager, and the composition files it writes are hot-reloaded through the watcher.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/runtime-architecture.dark.png">
+    <img alt="Runtime architecture: the plugin panel UI calls PluginPanelService, which routes to the session capability manager and the host plugin manager; session capabilities register into the skill pool and persist a session introduce-set, while the plugin manager writes the composition files that the watcher hot-reloads into the cordis composition" src="docs/assets/runtime-architecture.light.png" width="900">
+  </picture>
+</p>
+
+> Interactive version: [`runtime-architecture.architecture.html`](./docs/diagrams/runtime-architecture.architecture.html) · Source: [`runtime-architecture.architecture.json`](./docs/diagrams/runtime-architecture.architecture.json) · 12 source references, pinned to one commit.
 
 ## Troubleshooting
 

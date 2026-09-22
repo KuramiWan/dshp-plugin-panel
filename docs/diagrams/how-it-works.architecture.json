@@ -1,0 +1,296 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "How the Plugin Panel works",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "management-view",
+        "label": "Management view",
+        "focus": [
+          "panel",
+          "view",
+          "skill",
+          "mcp",
+          "patch",
+          "bundle"
+        ],
+        "note": "The panel exposes one management view over the DSH composition layer."
+      },
+      {
+        "id": "session-capabilities",
+        "label": "Session-level",
+        "focus": [
+          "view",
+          "skill",
+          "mcp",
+          "pool",
+          "sessionfile"
+        ],
+        "note": "Introduce registers back at the pool; no file is copied."
+      },
+      {
+        "id": "mounts",
+        "label": "Mount dimensions",
+        "focus": [
+          "view",
+          "patch",
+          "bundle"
+        ],
+        "note": "Patch mounts hot, bundle mounts cold, and bundle can be promoted."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "panel",
+      "type": "backend",
+      "label": "dshp-plugin-panel",
+      "sublabel": "itself a patch plugin",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "view",
+      "type": "backend",
+      "label": "Management view",
+      "sublabel": "face of the composition layer",
+      "pos": [
+        280,
+        300
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "skill",
+      "type": "backend",
+      "label": "Skill capability",
+      "sublabel": "introduce = register",
+      "pos": [
+        580,
+        60
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "backend",
+      "label": "MCP capability",
+      "sublabel": "mcp-client row",
+      "pos": [
+        580,
+        200
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "patch",
+      "type": "backend",
+      "label": "Host plugin · patch",
+      "sublabel": "hot mount · cordis.patch.yml",
+      "pos": [
+        580,
+        380
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "bundle",
+      "type": "backend",
+      "label": "Host plugin · bundle",
+      "sublabel": "cold mount · restart required",
+      "pos": [
+        580,
+        520
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "pool",
+      "type": "database",
+      "label": "Skill pool",
+      "sublabel": "~/.dsh/.skill-pool/local/",
+      "pos": [
+        880,
+        60
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "sessionfile",
+      "type": "database",
+      "label": "Session introduce-set",
+      "sublabel": ".session-skills/<sessionId>.json",
+      "pos": [
+        880,
+        200
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "tabs",
+      "type": "frontend",
+      "label": "Frontend tabs",
+      "sublabel": "Skills / Plugins",
+      "pos": [
+        40,
+        560
+      ],
+      "size": [
+        150,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "Session-level (agent context)",
+      "wraps": [
+        "skill",
+        "mcp",
+        "sessionfile"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Process-level (host composition)",
+      "wraps": [
+        "patch",
+        "bundle"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "panel-exposes",
+      "from": "panel",
+      "to": "view",
+      "label": "exposes",
+      "variant": "emphasis"
+    },
+    {
+      "id": "view-skill",
+      "from": "view",
+      "to": "skill",
+      "label": "introduce / remove",
+      "fromSide": "top",
+      "toSide": "left"
+    },
+    {
+      "id": "view-mcp",
+      "from": "view",
+      "to": "mcp",
+      "label": "connect / disconnect",
+      "fromSide": "top",
+      "toSide": "left"
+    },
+    {
+      "id": "view-patch",
+      "from": "view",
+      "to": "patch",
+      "label": "toggle (hot)",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "view-bundle",
+      "from": "view",
+      "to": "bundle",
+      "label": "toggle (restart)",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "view-tabs",
+      "from": "view",
+      "to": "tabs",
+      "label": "presentation only",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "right"
+    },
+    {
+      "id": "skill-pool",
+      "from": "skill",
+      "to": "pool",
+      "label": "register, no copy",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "skill-sessionfile",
+      "from": "skill",
+      "to": "sessionfile",
+      "label": "persist",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "bundle-promote",
+      "from": "bundle",
+      "to": "patch",
+      "label": "promote",
+      "fromSide": "top",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Everything is a plugin",
+      "items": [
+        "Every capability is a loadable row in the DSH composition",
+        "Skill = document capability, MCP = mcp-client row",
+        "Host plugin = patch or bundle row"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Two mount dimensions",
+      "items": [
+        "Session-level lives in the agent context, isolated per session",
+        "Process-level host plugins load into the host and affect everything",
+        "The Skills / Plugins split is presentation: one layer underneath"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Introduce = register",
+      "items": [
+        "The registration points back at the pool folder; no file is copied",
+        "Saved to <poolRoot>/.session-skills/<sessionId>.json",
+        "Replayed when a resumed session comes back after a restart"
+      ]
+    }
+  ]
+}

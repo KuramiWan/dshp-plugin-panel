@@ -8,7 +8,7 @@
 
 🚀 会话级技能 | 可视化面板 | 插件 & MCP 管理 | 多数改动免重启 | 一条命令安装
 
-[Highlights](#highlights) | [Who it is for](#who-it-is-for) | [Quick start](#quick-start) | [Skill management](#skill-management) | [Plugins and MCP](#plugins-and-mcp) | [How it works](#how-it-works) | [Troubleshooting](#troubleshooting) | [FAQ](#faq)
+[Highlights](#highlights) | [Who it is for](#who-it-is-for) | [Quick start](#quick-start) | [Skill management](#skill-management) | [Plugins and MCP](#plugins-and-mcp) | [How it works](#how-it-works) | [Architecture](#architecture) | [Troubleshooting](#troubleshooting) | [FAQ](#faq)
 
 🌐 [English](README.md) | **中文**
 
@@ -143,6 +143,18 @@ dsh plugin --profile web add github:kuramiwan/dshp-plugin-panel
 
 DSH 自身的模型就是 *everything is a plugin*（一切都是插件）：宿主是一个组合，组合里每个可挂载行（cordis composition line）都是插件 —— skill 是插件提供的文档能力，MCP 是 `mcp-client` 组合行，宿主插件是 `patch`/`bundle` 组合行。面板并不引入第二套模型：它只是给这个组合层一个**管理视图**，仅在你管理时把 *技能 vs 插件* 作为展示区分。
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/how-it-works.zh.dark.png">
+    <img alt="插件面板如何工作：dshp-plugin-panel 给 DSH 组合层暴露一个管理视图；会话级技能与 MCP 能力活在 agent 上下文里，进程级 patch / bundle 宿主插件活在宿主里" src="docs/assets/how-it-works.zh.light.png" width="900">
+  </picture>
+</p>
+
+> Interactive version: [`how-it-works.zh.architecture.html`](./docs/diagrams/how-it-works.zh.architecture.html) · Source: [`how-it-works.zh.architecture.json`](./docs/diagrams/how-it-works.zh.architecture.json)
+
+<details>
+<summary>文字版（Mermaid）</summary>
+
 ```mermaid
 flowchart TB
     subgraph PANEL["dshp-plugin-panel"]
@@ -165,12 +177,27 @@ flowchart TB
     VIEW -.->|"同一语义层，仅展示区分"| FRONT
 ```
 
+</details>
+
 1. **一切都是插件。** skill、MCP、宿主插件都是同一个 DSH 组合里的可挂载行；它们的不同只在 *挂在哪*，不在种类。
 2. **两种挂载维度。** 会话级能力（引入的技能、连上的 MCP）活在 agent 上下文里、按会话隔离；进程级宿主插件加载进宿主、全局生效。
 3. **引入技能是纯注册。** 不复制文件 —— 注册指回池目录（`~/.dsh/.skill-pool/local/`）。引入集落盘到 `<poolRoot>/.session-skills/<sessionId>.json`，宿主重启后 **resume 的会话**自动重放。
 4. **前端只做展示区分。** 同一批底层能力被展示为「技能」页签与「插件」页签；斜杠命令与模型工具是无 GUI 的同一管理面。
 
 精确路径、resume 触发点、影子覆盖与 patch/bundle 挂载的完整图见 [`docs/diagrams/capability-mount.md`](./docs/diagrams/capability-mount.md)。
+
+## Architecture
+
+管理视图背后的运行路径：面板 UI 经同进程 HTTP 调 `PluginPanelService`；会话级的技能 / MCP 操作走会话能力管理，进程级插件操作走宿主插件管理 —— 后者写组合层文件，再由 watcher 热重载进 cordis 组合。
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/runtime-architecture.zh.dark.png">
+    <img alt="运行时架构：面板 UI 调用 PluginPanelService，分发到会话能力管理与宿主插件管理；会话能力注册进技能池并落盘会话引入集，宿主插件管理写组合层文件，由 watcher 热重载进 cordis 组合" src="docs/assets/runtime-architecture.zh.light.png" width="900">
+  </picture>
+</p>
+
+> 可交互版：[`runtime-architecture.zh.architecture.html`](./docs/diagrams/runtime-architecture.zh.architecture.html) · 图源：[`runtime-architecture.zh.architecture.json`](./docs/diagrams/runtime-architecture.zh.architecture.json) · 源码证据 12 处，钉在同一个 commit。
 
 ## Troubleshooting
 

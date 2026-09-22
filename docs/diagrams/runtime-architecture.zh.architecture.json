@@ -1,0 +1,374 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "dshp-plugin-panel 运行时架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/KuramiWan/dshp-plugin-panel",
+      "provider": "github",
+      "revision": "8e135c52e33f408c61d3c9b5563028ac41730a16"
+    },
+    "views": [
+      {
+        "id": "panel-path",
+        "label": "面板主路径",
+        "focus": [
+          "ui",
+          "svc",
+          "plugins",
+          "compose",
+          "registry"
+        ],
+        "note": "从面板点击到组合层落盘与热挂载。"
+      },
+      {
+        "id": "session-capabilities",
+        "label": "会话级能力",
+        "focus": [
+          "agent",
+          "sessioncap",
+          "pool",
+          "sessfile"
+        ],
+        "note": "技能与 MCP 按会话隔离，引入只做注册。"
+      },
+      {
+        "id": "write-boundary",
+        "label": "组合层写入",
+        "focus": [
+          "sessioncap",
+          "registry",
+          "plugins",
+          "compose"
+        ],
+        "note": "写保护、原子写与 watcher 热重载。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "agent",
+      "type": "external",
+      "label": "Agent / 斜杠命令",
+      "sublabel": "session_skill_* · session_mcp_*",
+      "pos": [
+        30,
+        80
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/tools.ts"
+        },
+        {
+          "path": "src/commands.ts"
+        }
+      ]
+    },
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "插件面板 UI",
+      "sublabel": "React · 技能 / 插件 页签",
+      "pos": [
+        30,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/client/view.tsx"
+        },
+        {
+          "path": "src/client/plugin-view.tsx"
+        }
+      ]
+    },
+    {
+      "id": "svc",
+      "type": "backend",
+      "label": "PluginPanelService",
+      "sublabel": "webServer · /plugin-panel/*",
+      "pos": [
+        330,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/plugin-panel-service.ts",
+          "line": 1,
+          "label": "HTTP 路由层"
+        }
+      ]
+    },
+    {
+      "id": "sessioncap",
+      "type": "backend",
+      "label": "会话能力管理",
+      "sublabel": "SessionSkillStore · McpManager",
+      "pos": [
+        590,
+        100
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/actions.ts",
+          "line": 107,
+          "end_line": 116,
+          "label": "register"
+        },
+        {
+          "path": "src/mcp-manager.ts"
+        }
+      ]
+    },
+    {
+      "id": "registry",
+      "type": "backend",
+      "label": "cordis 组合层",
+      "sublabel": "registry fibers · 热挂载",
+      "pos": [
+        590,
+        300
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/plugin-manager.ts",
+          "line": 7,
+          "end_line": 9,
+          "label": "registry 盘点"
+        }
+      ]
+    },
+    {
+      "id": "plugins",
+      "type": "backend",
+      "label": "宿主插件管理",
+      "sublabel": "PluginManager · 写保护",
+      "pos": [
+        590,
+        500
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/plugin-manager.ts",
+          "line": 1,
+          "end_line": 5,
+          "label": "领域模型"
+        }
+      ]
+    },
+    {
+      "id": "pool",
+      "type": "database",
+      "label": "Skill 池",
+      "sublabel": "~/.dsh/.skill-pool/local/",
+      "pos": [
+        880,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/pool.ts",
+          "line": 56,
+          "end_line": 63,
+          "label": "poolRoot"
+        }
+      ]
+    },
+    {
+      "id": "sessfile",
+      "type": "database",
+      "label": "会话引入集",
+      "sublabel": ".session-skills/<sessionId>.json",
+      "pos": [
+        880,
+        220
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/handles.ts",
+          "line": 16,
+          "end_line": 26,
+          "label": "落盘路径"
+        }
+      ]
+    },
+    {
+      "id": "compose",
+      "type": "database",
+      "label": "组合层落盘",
+      "sublabel": "patch.yml · bundles · node_modules",
+      "pos": [
+        880,
+        500
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/plugin-manager.ts",
+          "label": "组合层写入"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "DSH 宿主进程（web profile）",
+      "wraps": [
+        "svc",
+        "sessioncap",
+        "registry",
+        "plugins"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "$DSH_HOME · 磁盘（组合层写入边界）",
+      "wraps": [
+        "pool",
+        "sessfile",
+        "compose"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "panel-to-service",
+      "from": "ui",
+      "to": "svc",
+      "label": "POST /plugin-panel/*",
+      "variant": "emphasis"
+    },
+    {
+      "id": "agent-to-session",
+      "from": "agent",
+      "to": "sessioncap",
+      "label": "注册 / 连接（会话级）",
+      "labelAt": [
+        235,
+        88
+      ]
+    },
+    {
+      "id": "service-to-session",
+      "from": "svc",
+      "to": "sessioncap",
+      "label": "skill* / mcp*"
+    },
+    {
+      "id": "service-to-plugins",
+      "from": "svc",
+      "to": "plugins",
+      "label": "plugin*"
+    },
+    {
+      "id": "session-to-registry",
+      "from": "sessioncap",
+      "to": "registry",
+      "label": "mcp-client",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "session-to-pool",
+      "from": "sessioncap",
+      "to": "pool",
+      "label": "resourceBase 指回池目录"
+    },
+    {
+      "id": "session-to-sessfile",
+      "from": "sessioncap",
+      "to": "sessfile",
+      "label": "落盘 · resume 重放"
+    },
+    {
+      "id": "plugins-to-compose",
+      "from": "plugins",
+      "to": "compose",
+      "label": "写 patch / bundles"
+    },
+    {
+      "id": "compose-to-registry",
+      "from": "compose",
+      "to": "registry",
+      "label": "watcher 热重载（免重启）",
+      "fromSide": "top",
+      "toSide": "right"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "三面同源",
+      "items": [
+        "面板、/skill-* 命令与 session_skill_* 工具共享同一 SessionSkillStore",
+        "技能与 MCP 都是会话级能力，活在 agent 上下文里，按会话隔离",
+        "引入 = 纯注册：resourceBase 指回池目录，不复制文件"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "两种挂载",
+      "items": [
+        "patch：cordis.patch.yml insert 行，watcher 热重载，改即生效",
+        "bundle：dsh.profile.bundles 启动读一次，改动需重启",
+        "面板自身也由组合层挂载（bootstrap）"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "写保护与安全",
+      "items": [
+        "每次写：.bak 备份 → 解析校验 → 临时文件 + rename 原子写",
+        "失败回滚；mcp select 失败时 restoreGlobalMcp",
+        "promote 就地改写 node_modules 内声明，pnpm update 会还原"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "会话隔离",
+      "items": [
+        "引入集落盘 <poolRoot>/.session-skills/<sessionId>.json",
+        "仅 source==='resume' 的会话重放，新会话不重放",
+        "同名 skill 本会话影子覆盖全局版本"
+      ]
+    }
+  ]
+}
