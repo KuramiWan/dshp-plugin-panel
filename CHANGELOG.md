@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-09-29
+
+### Added
+- **支持 DSH 0.2 线（`next` = `0.2.0-rc.1`），与 0.1.7 线并存**：面板已在真实
+  DSH 0.2.0-rc.1 下实测通过——插件初始化、真实 agent 创建、`agent/created` 发射、
+  `/plugin-panel/pluginList`（147 行，走 registry/fiber 内省）、`sessionPluginList`、
+  `browse`、未知端点 404、agent 销毁全部正常。**无需任何代码改动**：`agent/created`、
+  `SessionStartSource`、`JsonValue`、`defineTool`、`mcp-client` 的 `apply`/`inject`
+  在 0.2.0-rc.1 均未变（cordis 仍是 `~4.0.4`、schemastery 仍是 `~3.18.4`）。
+- `scripts/set-dsh-baseline.mjs` 与 CI 的 `dsh-matrix` job：逐条 DSH 线重钉
+  devDependencies 后跑 typecheck + 全量测试；脚本同时**断言**目标版本落在声明的
+  peer 区间内（`0.1.8-rc.1` 是可用的负例）。
+
+### Changed
+- **`peerDependencies` 改为联合区间**：`@deepseek-ai/dsh-*` 由 `^0.1.7-rc.2` 改为
+  `^0.1.7-rc.2 || ^0.2.0-rc.1`。这不是可选的美化——**DSH 0.2 起安装时会按
+  `peerDependencies` 拒绝不兼容插件**（实测报 `installation rejected: … incompatible
+  with dsh 0.2.0-rc.1`），区间没放宽就装不上。也不能写成一条宽区间：semver 只在比较器
+  存在同 `major.minor.patch` 三元组的预发布时才接受预发布版本，所以
+  `>=0.1.7-rc.2 <0.3.0-0` 并不匹配 `0.2.0-rc.1`，每条预发布线必须显式列出。
+
 ## [0.3.0] - 2026-09-29
 
 ### Added
@@ -191,7 +212,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added project governance: `LICENSE` (MIT, © 2026 super_camel),
   `CONTRIBUTING.md`, CI (lightweight type-check), Keep-a-Changelog file.
 
-[Unreleased]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.1...v0.2.2

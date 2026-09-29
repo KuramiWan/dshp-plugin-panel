@@ -95,26 +95,51 @@ so the package builds independently of the DSH source tree.
   invocation, model tools, session isolation, and the panel.
 - For browser UI changes, verify in the DSH web GUI Settings → 「插件面板」.
 
-## DSH version baseline (manual ritual)
+## DSH version baseline
 
-`peerDependencies` / `devDependencies` are pinned to a **specific DSH prerelease**
-line (currently `0.1.7-rc.2`). semver cannot express "any `0.1.x` prerelease", so
-this does **not** follow automatically: `^0.1.7-rc.2` matches `0.1.7-rc.2`/`0.1.7`
-but **not** `0.1.8-rc.1`, and neither CI nor `prepublishOnly` checks whether the
-declared peer ranges cover the DSH a user actually runs.
+The plugin supports **two DSH lines at once**: `latest` (`0.1.7-rc.2`) and `next`
+(`0.2.0-rc.1`). `peerDependencies` therefore declares a **union** range per
+consumer package:
 
-So on every DSH prerelease, before releasing:
+```
+"@deepseek-ai/dsh-agent": "^0.1.7-rc.2 || ^0.2.0-rc.1"
+```
 
-1. Read the current DSH prerelease: `npm view @deepseek-ai/dsh dist-tags`.
-2. Bump every `@deepseek-ai/dsh-*` peer **and** dev range to it, plus `cordis`
-   and `schemastery` to whatever that DSH pins.
-3. `pnpm install --no-frozen-lockfile && pnpm typecheck && pnpm test` — the
-   type-check is what catches renamed events / changed API shapes against the
-   real `.d.ts` (it is the only automated guard against the class of silent break
-   this repo has already been bitten by).
+Why a union and not one wide range: semver only lets a **prerelease** version
+satisfy a comparator set when some comparator has the *same* `major.minor.patch`
+tuple. So `>=0.1.7-rc.2 <0.3.0-0` does **not** match `0.2.0-rc.1` — each
+prerelease line must be named explicitly.
 
-Do not claim in release notes that type-check "covers" DSH upgrades on its own:
-it only sees the version you have already installed.
+Two mechanisms keep this honest, because "declared" is not "tested":
+
+- **Install-time gate (DSH 0.2+)** — DSH refuses to install a plugin whose
+  `peerDependencies` exclude the running DSH (`dsh: installation rejected: ...
+  incompatible with dsh 0.2.0-rc.1`). A too-narrow range means users literally
+  cannot install; the escape hatch `dsh plugin allow-version … --accept-risk` is
+  for local experiments only, never for a release.
+- **`dsh-matrix` CI job + `scripts/set-dsh-baseline.mjs`** — `devDependencies`
+  can only hold one version and `pnpm typecheck` only sees the installed `.d.ts`,
+  so CI re-pins and re-runs type-check + tests on **each** line. The script also
+  *asserts* the target version satisfies every declared `dsh-*` peer range and
+  fails loudly otherwise (`0.1.8-rc.1` is a good negative test).
+
+To add support for a new DSH line:
+
+1. `npm view @deepseek-ai/dsh dist-tags` to get the version.
+2. Extend each `@deepseek-ai/dsh-*` **peer** range with `|| ^<new>`, and add the
+   version to the `matrix.dsh` list in `.github/workflows/ci.yml`.
+3. `node scripts/set-dsh-baseline.mjs <new>` (asserts the peer range admits it),
+   then `pnpm install --no-frozen-lockfile && pnpm typecheck && pnpm test`.
+4. Boot it for real before claiming support — type-check and tests do not prove
+   host behaviour (event emission, `webServer` routing, fiber introspection).
+   Point `DSH_HOME` at a scratch dir, install the target `@deepseek-ai/dsh`
+   locally, and mount this package via `link:`.
+
+`cordis` and `schemastery` are pinned to whatever the DSH lines ship
+(currently `^4.0.4` / `^3.18.4`) and are **not** part of the matrix.
+
+Note: `pnpm typecheck` only catches drift for the version you already installed —
+never claim in release notes that it "covers" a DSH upgrade by itself.
 
 ## Commit style
 

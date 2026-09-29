@@ -35,6 +35,43 @@ jobs:
       - name: Build (host + client)
         run: pnpm build
 
+  # 本插件同时支持两条 DSH 线（latest=0.1.7-rc.2 / next=0.2.0-rc.1）。
+  # devDependencies 只能装一个版本，而 `pnpm typecheck` 只看得到**已安装**的那个 .d.ts，
+  # 所以这里用 matrix 逐条线真装真跑——否则「声明支持 0.2」就是没测过的空话
+  # （本仓库正是因为事件改名没被任何自动防线看到才静默坏过一次）。
+  # 脚本还会断言该版本确实落在声明的 peer 区间内：DSH 0.2 起安装时会按 peerDependencies
+  # 拒绝不兼容插件，区间写窄 = 用户直接装不上。
+  dsh-matrix:
+    name: DSH ${{ matrix.dsh }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dsh:
+          - 0.1.7-rc.2
+          - 0.2.0-rc.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Pin devDependencies to DSH ${{ matrix.dsh }} (asserts peer coverage)
+        run: node scripts/set-dsh-baseline.mjs ${{ matrix.dsh }}
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Type-check host + client
+        run: pnpm typecheck
+
+      - name: Run tests
+        run: pnpm test
+
   # 发布预演：校验打包产物完整（files 里声明的文件都真实存在、可安装）。
   # 与 release.yml 的 prepublishOnly 互补：本 job 在每次 PR/push 就提前拦下打包错误。
   pack-check:
