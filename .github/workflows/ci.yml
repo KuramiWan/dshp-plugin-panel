@@ -60,10 +60,15 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # 必须先装依赖再跑脚本：脚本用 semver 做 peer 区间断言（新 clone 上还没有
+      # node_modules）。第一次装的是提交里的基线，脚本改完 devDeps 再装一次。
+      - name: Install dependencies (committed baseline)
+        run: pnpm install --frozen-lockfile
+
       - name: Pin devDependencies to DSH ${{ matrix.dsh }} (asserts peer coverage)
         run: node scripts/set-dsh-baseline.mjs ${{ matrix.dsh }}
 
-      - name: Install dependencies
+      - name: Install dependencies at the pinned DSH line
         run: pnpm install --no-frozen-lockfile
 
       - name: Type-check host + client

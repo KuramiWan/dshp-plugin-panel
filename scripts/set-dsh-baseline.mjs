@@ -17,7 +17,16 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import semver from 'semver'
+
+// semver 是 devDependency：新 clone 上要先 `pnpm install`，否则给出可读的提示，
+// 而不是一句 ERR_MODULE_NOT_FOUND（CI 就踩过这个 —— 顺序错了，脚本跑在 install 之前）。
+let semver
+try {
+  semver = (await import('semver')).default
+} catch {
+  console.error('[set-dsh-baseline] 需要 devDependency semver —— 请先运行 `pnpm install`。')
+  process.exit(2)
+}
 
 const version = process.argv[2]
 if (version === undefined || version === '') {
