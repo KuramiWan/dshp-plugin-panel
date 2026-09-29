@@ -30,7 +30,7 @@ recorded in the DSH monorepo's `docs/adr/`.
 - `index.ts` — plugin entry: `PluginPanelPlugin` (default export),
   `inject: ['agents','tools','skills','commands']`, `Config.poolRoot?`;
   registers tools + commands (`ctx.effect`), the `PluginPanelService` sub-service
-  (`ctx.plugin`), and subscribes to `agent/session-start` (source=resume) to
+  (`ctx.plugin`), and subscribes to `agent/created` (source=resume) to
   replay the session introduced set.
 - `pool.ts` — pool read layer: `local/` directory scan / `SKILL.md` frontmatter
   parsing (BOM stripping); `defaultPoolRoot` follows DSH home precedence
@@ -85,14 +85,36 @@ so the package builds independently of the DSH source tree.
 - Release (`release.yml`) has a `verify` preflight (type-check + test + build +
   pack dry-run) that must pass before `publish` runs.
 - Tests cover: pool/frontmatter parsing, the session introduce-set
-  (`SessionSkillStore`), the shared core actions, plugin-manager
-  write-protection/hot-mount, and the HTTP route protocol
-  (`405/404/400`, dispatch, method routing). Keep pure-logic tests in
-  `test/*.test.ts` (Node built-in `node:test`, no extra deps); each test file
-  uses its own subdir under `test/.tmp/` so parallel runs don't clobber each other.
+  (`SessionSkillStore`), the shared core actions, the resume-replay contract
+  (`test/session-replay.test.ts`: event name + `source==='resume'` only + the
+  returned-promise shape), plugin-manager write-protection/hot-mount, and the
+  HTTP route protocol (`405/404/400`, dispatch, method routing). Keep pure-logic
+  tests in `test/*.test.ts` (Node built-in `node:test`, no extra deps); each test
+  file uses its own subdir under `test/.tmp/` so parallel runs don't clobber each other.
 - Manual smoke checks: commands main path, idempotency edges, slash-skill
   invocation, model tools, session isolation, and the panel.
 - For browser UI changes, verify in the DSH web GUI Settings → 「插件面板」.
+
+## DSH version baseline (manual ritual)
+
+`peerDependencies` / `devDependencies` are pinned to a **specific DSH prerelease**
+line (currently `0.1.7-rc.2`). semver cannot express "any `0.1.x` prerelease", so
+this does **not** follow automatically: `^0.1.7-rc.2` matches `0.1.7-rc.2`/`0.1.7`
+but **not** `0.1.8-rc.1`, and neither CI nor `prepublishOnly` checks whether the
+declared peer ranges cover the DSH a user actually runs.
+
+So on every DSH prerelease, before releasing:
+
+1. Read the current DSH prerelease: `npm view @deepseek-ai/dsh dist-tags`.
+2. Bump every `@deepseek-ai/dsh-*` peer **and** dev range to it, plus `cordis`
+   and `schemastery` to whatever that DSH pins.
+3. `pnpm install --no-frozen-lockfile && pnpm typecheck && pnpm test` — the
+   type-check is what catches renamed events / changed API shapes against the
+   real `.d.ts` (it is the only automated guard against the class of silent break
+   this repo has already been bitten by).
+
+Do not claim in release notes that type-check "covers" DSH upgrades on its own:
+it only sees the version you have already installed.
 
 ## Commit style
 

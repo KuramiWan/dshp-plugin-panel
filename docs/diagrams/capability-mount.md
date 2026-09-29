@@ -34,7 +34,7 @@ flowchart TB
 
     PERSIST[".session-skills/<sessionId>.json<br/>（落在池根下）"]
     SKILL -->|"落盘"| PERSIST
-    PERSIST -.->|"agent/session-start source=resume 时重放"| SKILL
+    PERSIST -.->|"agent/created source=resume 时重放"| SKILL
 
     MCP -->|"connect/disconnect（会话级）"| MCPROW["mcp-client 组合行"]
 
@@ -63,7 +63,7 @@ flowchart TB
 - **落盘全路径**：`<poolRoot>/.session-skills/<sessionId>.json`（默认
   `~/.dsh/.skill-pool/.session-skills/…`，`src/handles.ts:16,26`）；池根可被 `$DSH_HOME` 或
   插件配置 `poolRoot` 覆盖（`src/pool.ts:56-63`）。
-- **回放只在 resume**：`src/index.ts:118-121` 仅 `agent/session-start` 的 `source==='resume'`
+- **回放只在 resume**：`src/index.ts:90-105`（`subscribeSessionReplay`）仅 `agent/created` 的 `source==='resume'`
   触发 `replaySession`（`src/actions.ts:135-146`）；全新会话不重放；重放是 best-effort——
   池文件缺失只记 warn，不留可 remove 的残留清理。README/UI 文案凡说「重启自动恢复」均指
   resume 的会话。

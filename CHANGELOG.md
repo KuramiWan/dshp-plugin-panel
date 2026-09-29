@@ -5,9 +5,40 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-09-29
+
+### Added
+- **会话级插件挂载（统一挂载点模型的会话维度）**：已登记的宿主插件可以「挂载到本会话」——
+  只把该插件挂进当前会话的 agent 作用域，进程级组合与其它会话都不受影响；会话结束
+  （agent 生命周期结束）时自动回收，**不写任何组合文件**，子代理不继承。新增面板端点
+  `sessionPluginList` / `pluginMount` / `pluginUnmount` 与「挂载到本会话 / 从本会话移除」
+  按钮，插件行上显示该插件的全部会话挂载点；进程级插件视图把会话挂载产生的 fiber 按
+  fiber 父链归入其所属会话，不再同名多出一行。
+
+### Fixed
+- **兼容 DSH 0.1.7-rc.2：resume 自动重放曾静默失效**——`agent/session-start` 在 0.1.7-rc.2
+  已不复存在（全包无发射点），订阅它的「宿主重启后自动恢复引入集」因此从不触发，且无任何
+  报错。改为订阅 `agent/created`：payload 仍是 `{ agent, source }`，仍只在
+  `source==='resume'` 时重放。
+- **重放不再吞掉失败，也不再与首个 turn 抢跑**：`agent/created` 是 `@mode serial` 且
+  「listeners are awaited before creation resolves」，因此改为把重放 promise 交还框架——
+  重放先于创建 resolve、也先于排队输入，用户在第一轮就能看到恢复的技能；失败降级为 warn
+  并 resolve 成 `undefined`，绝不让 agent 创建失败（旧写法 `void replay(...)` 会让循环外的
+  rejection 静默无人处理）。
+- `JsonValue` 不再由 `@deepseek-ai/dsh-session/types` 再导出，改从权威来源
+  `@deepseek-ai/dsh-util-values` 取得（仅类型使用，新增 devDependency）。
 
 ### Changed
+- **依赖基线对齐 DSH 0.1.7-rc.2**：`peerDependencies` / `devDependencies` 改为
+  `dsh-*@^0.1.7-rc.2`、`cordis@^4.0.4`、`schemastery@^3.18.4`。旧区间 `^0.1.0-rc.7`
+  在 semver 预发布规则下**不匹配** `0.1.7-rc.2`——带预发布的版本只有在区间里存在
+  同 major.minor.patch 三元组的预发布比较器时才被接受——故原 peer 声明在真实运行的
+  DSH 上是不可满足的。
+  注意：**这不是自动跟随的**。`^0.1.7-rc.2` 匹配 `0.1.7-rc.2` / `0.1.7`，但不匹配
+  `0.1.8-rc.1`，而 CI 与 `prepublishOnly` 都没有「声明的 peer 是否覆盖用户实际运行的
+  DSH」这一步检查；因此每次 DSH 预发布都需要手工同步 bump peer+dev 区间（发布清单一节
+  已写明这个仪式）。`pnpm typecheck` 只能在 devDependencies 已经跟到新版之后，
+  按真实 `.d.ts` 抓出事件名/API 形状的改动。
 - **新增热插拔插件默认不再立即启用**：「新增插件」默认只把插件登记进面板状态文件（在「热插拔」段显示为已停用），不改 `cordis.patch.yml`、不触发热重载；点「启用」才热挂载进宿主。对话框新增「添加后立即启用」勾选（默认不勾选），需要旧的一次到位行为时显式勾选。
 
 ## [0.2.3] - 2026-09-05
@@ -160,7 +191,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added project governance: `LICENSE` (MIT, © 2026 super_camel),
   `CONTRIBUTING.md`, CI (lightweight type-check), Keep-a-Changelog file.
 
-[Unreleased]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/kuramiwan/dshp-plugin-panel/compare/v0.2.0...v0.2.1

@@ -139,6 +139,14 @@ export const zh = {
   'plugin.update.checkFailed': '检查更新失败',
   'plugin.update.none': '所有插件均已是最新版本',
   'plugin.update.updated': '已更新',
+  'plugin.action.mount': '挂载到本会话',
+  'plugin.action.unmount': '从本会话移除',
+  'plugin.mounted.session': '本会话已挂载',
+  'plugin.mount.sessions': '会话挂载：{sessions}',
+  'plugin.mount.hint': '会话挂载只对本会话生效，其它会话不受影响；会话结束（agent 生命周期结束）时自动回收，且不写任何组合文件。子代理不继承。',
+  'plugin.notice.mounted': '已挂载到本会话',
+  'plugin.notice.unmounted': '已从本会话移除',
+  'plugin.mount.failed': '会话挂载失败',
 }
 
 export const en = {
@@ -279,6 +287,14 @@ export const en = {
   'plugin.update.checkFailed': 'Check for updates failed',
   'plugin.update.none': 'All plugins are up to date',
   'plugin.update.updated': 'Updated',
+  'plugin.action.mount': 'Mount to this session',
+  'plugin.action.unmount': 'Remove from this session',
+  'plugin.mounted.session': 'Mounted in this session',
+  'plugin.mount.sessions': 'Session mounts: {sessions}',
+  'plugin.mount.hint': 'A session mount affects only this session; other sessions are unaffected. It is reclaimed automatically when the session ends (agent lifetime), and writes no composition file. Subagents do not inherit it.',
+  'plugin.notice.mounted': 'Mounted to this session',
+  'plugin.notice.unmounted': 'Removed from this session',
+  'plugin.mount.failed': 'Session mount failed',
 }
 
 export type PluginPanelLocaleDict = typeof zh

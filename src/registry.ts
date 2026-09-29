@@ -8,6 +8,24 @@ export interface RegistryFiber {
   name?: unknown
   state?: number
   config?: unknown
+  /** cordis fiber 的父链（真实 fiber 有；测试桩可缺）。 */
+  parent?: { fiber?: RegistryFiber }
+}
+
+/**
+ * fiber 是否位于 root 子树内（沿 fiber.parent 上溯）。
+ * 用于把「会话挂载 fiber」归入其所属会话，而不是进程级组合行。
+ */
+export function withinFiber(fiber: RegistryFiber | undefined, root: RegistryFiber | undefined): boolean {
+  if (fiber === undefined || root === undefined) return false
+  let current: RegistryFiber | undefined = fiber
+  while (current !== undefined) {
+    if (current === root) return true
+    const parent: RegistryFiber | undefined = current.parent?.fiber
+    if (parent === undefined || parent === current) return false
+    current = parent
+  }
+  return false
 }
 
 /** 从 cordis.registry 拍平所有已加载插件 Fiber（含 mcp-client）。 */

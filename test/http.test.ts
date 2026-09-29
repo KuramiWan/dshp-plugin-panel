@@ -16,6 +16,7 @@ import { PluginPanelService } from '../src/plugin-panel-service.ts'
 import { SessionSkillStore } from '../src/handles.ts'
 import type { SessionMcpManager } from '../src/mcp-manager.ts'
 import type { PluginManager } from '../src/plugin-manager.ts'
+import { SessionPluginManager } from '../src/session-plugin-manager.ts'
 
 const testRoot = join(fileURLToPath(new URL('.', import.meta.url)), '.tmp', 'http-test')
 mkdirSync(testRoot, { recursive: true })
@@ -49,7 +50,8 @@ function makeService(poolRoot: string, liveSessions: string[], roots: string[] =
     },
     skills: { list: async () => [] },
   }
-  const service = new PluginPanelService(ctx as never, { poolRoot, store, mcp, plugins })
+  const sessionPlugins = new SessionPluginManager(ctx as never, undefined, plugins)
+  const service = new PluginPanelService(ctx as never, { poolRoot, store, mcp, plugins, sessionPlugins })
   return { captured, store }
 }
 

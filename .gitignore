@@ -10,3 +10,5 @@ tmp/
 lib/
 # 本地开发根（DSH_HOME 隔离；含 profile/会话/凭证引用，不进 git）
 .dsh-dev/
+# 审查产物（dsh-review 写在工作区的运行期目录，不进版本库）
+.dsh-review/

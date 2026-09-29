@@ -32,7 +32,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionMcpManager } from './mcp-manager.ts'
 import { defaultDshHome, profileDirFromBaseUrl } from './home.ts'
 import { atomicWriteFileSync, readTextFileSync } from './fs.ts'
-import { isMcpClientConfig, registryFibers } from './registry.ts'
+import { isMcpClientConfig, registryFibers, withinFiber, type RegistryFiber } from './registry.ts'
 import { parseOutdatedJson, installedSpecOf, buildUpdateStatus, isMajorBump, type OutdatedEntry } from './update.ts'
 
 /** 面板自身包名与行 id（禁止停）。 */
@@ -238,7 +238,12 @@ export class PluginManager {
       for (const n of this.mcp.connectedNames(agent)) connected.add(n)
     }
 
+    // 会话级挂载的 fiber 落在某个 agent 的 scope 子树内：归入其会话挂载点（会话维度视图），
+    // 进程级组合行不再展示它们（否则同名插件会多出一行）。
+    const sessionScopes = (this.ctx as unknown as { agents?: { list: () => Array<{ ctx?: { fiber?: RegistryFiber } }> } })
+      .agents?.list().map(a => a.ctx?.fiber).filter((f): f is RegistryFiber => f !== undefined) ?? []
     const fibers = registryFibers(this.ctx)
+      .filter(fiber => !sessionScopes.some(scope => withinFiber(fiber, scope)))
     const seenIds = new Set<string>()
     const views: PluginFiberView[] = []
     // M1 修复：给 unnamed fiber 分配唯一展示 id，避免多个无 name 的插件被去重合并成

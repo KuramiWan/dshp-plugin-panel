@@ -55,6 +55,12 @@ import type {
   PluginPanelPluginPromoteResult,
   PluginPanelPluginDemoteRequest,
   PluginPanelPluginDemoteResult,
+  PluginPanelPluginMountRequest,
+  PluginPanelPluginMountResult,
+  PluginPanelPluginUnmountRequest,
+  PluginPanelPluginUnmountResult,
+  PluginPanelSessionPluginListRequest,
+  PluginPanelSessionPluginListResult,
   PluginPanelCheckUpdatesRequest,
   PluginPanelCheckUpdatesResult,
   PluginPanelPluginUpdateRequest,
@@ -89,6 +95,9 @@ export interface PluginPanelClient {
   pluginInstall(request: PluginPanelPluginInstallRequest): Promise<PluginPanelPluginInstallResult>
   pluginPromote(request: PluginPanelPluginPromoteRequest): Promise<PluginPanelPluginPromoteResult>
   pluginDemote(request: PluginPanelPluginDemoteRequest): Promise<PluginPanelPluginDemoteResult>
+  sessionPluginList(request: PluginPanelSessionPluginListRequest): Promise<PluginPanelSessionPluginListResult>
+  pluginMount(request: PluginPanelPluginMountRequest): Promise<PluginPanelPluginMountResult>
+  pluginUnmount(request: PluginPanelPluginUnmountRequest): Promise<PluginPanelPluginUnmountResult>
   checkUpdates(request: PluginPanelCheckUpdatesRequest): Promise<PluginPanelCheckUpdatesResult>
   pluginUpdate(request: PluginPanelPluginUpdateRequest): Promise<PluginPanelPluginUpdateResult>
 }
@@ -231,6 +240,21 @@ export function createPluginPanelClient(): PluginPanelClient {
         return (await post('pluginPromote', request)) as PluginPanelPluginPromoteResult
       } catch (error) {
         return foldFail<PluginPanelPluginPromoteResult>(error)
+      }
+    },
+    sessionPluginList: request => post('sessionPluginList', request) as Promise<PluginPanelSessionPluginListResult>,
+    pluginMount: async (request) => {
+      try {
+        return (await post('pluginMount', request)) as PluginPanelPluginMountResult
+      } catch (error) {
+        return foldFail<PluginPanelPluginMountResult>(error)
+      }
+    },
+    pluginUnmount: async (request) => {
+      try {
+        return (await post('pluginUnmount', request)) as PluginPanelPluginUnmountResult
+      } catch (error) {
+        return foldFail<PluginPanelPluginUnmountResult>(error)
       }
     },
     pluginDemote: async (request) => {

@@ -251,6 +251,10 @@ export interface PluginPanelPluginEntry {
     readonly transport: 'stdio' | 'streamable-http'
     readonly connected: boolean
   }
+  /** 该插件已作为会话挂载点挂到**当前请求会话**（统一挂载点模型的会话维度）。 */
+  readonly sessionMounted?: boolean
+  /** 该插件的全部会话挂载点（会话 id，升序）；缺省 = 无会话挂载。 */
+  readonly mountedSessions?: readonly string[]
 }
 
 export interface PluginPanelPluginListRequest {
@@ -300,6 +304,47 @@ export interface PluginPanelPluginDemoteRequest {
 
 export type PluginPanelPluginDemoteResult =
   | { readonly ok: true; readonly id: string; readonly restartRequired: true }
+  | { readonly ok: false; readonly reason: string }
+
+// ---- 会话级挂载点（issue #5 统一挂载点模型的会话维度） ----
+
+/** 某会话上的一个挂载点视图。 */
+export interface PluginPanelSessionMount {
+  /** 行 id。 */
+  readonly id: string
+  readonly packageName: string
+  /** FiberState 数值。 */
+  readonly state: number
+  readonly active: boolean
+}
+
+/** 按会话列出会话挂载点。 */
+export interface PluginPanelSessionPluginListRequest {
+  readonly sessionId: string
+}
+
+export interface PluginPanelSessionPluginListResult {
+  readonly mounts: readonly PluginPanelSessionMount[]
+}
+
+/** 把插件挂到会话（会话挂载点）。 */
+export interface PluginPanelPluginMountRequest {
+  readonly sessionId: string
+  readonly id: string
+}
+
+export type PluginPanelPluginMountResult =
+  | { readonly ok: true; readonly id: string; readonly mounted: true; readonly alreadyMounted: boolean }
+  | { readonly ok: false; readonly reason: string }
+
+/** 从会话移除挂载点。 */
+export interface PluginPanelPluginUnmountRequest {
+  readonly sessionId: string
+  readonly id: string
+}
+
+export type PluginPanelPluginUnmountResult =
+  | { readonly ok: true; readonly id: string; readonly mounted: false }
   | { readonly ok: false; readonly reason: string }
 
 // ---- 检查更新 / 应用更新（自身 + 受管用户插件） ----

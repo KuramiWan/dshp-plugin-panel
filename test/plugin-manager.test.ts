@@ -27,6 +27,8 @@ function makeCtx(fiber: FakeFiber = {}, registryFibers: FakeFiber[] = [], baseUr
   return {
     registry: new Map([['plugin', { fibers: registryFibers }]]),
     fiber,
+    // 会话 fiber 过滤会读 ctx.agents.list()（这些用例无会话，返回空表）。
+    agents: { list: () => [] },
     ...(baseUrl !== undefined ? { baseUrl } : {}),
   } as unknown as import('@deepseek-ai/cordis').Context
 }

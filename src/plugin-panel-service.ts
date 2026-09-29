@@ -31,6 +31,7 @@ import {
 import type { SessionSkillStore } from './handles.ts'
 import type { SessionMcpManager, McpServerTemplate } from './mcp-manager.ts'
 import type { PluginManager } from './plugin-manager.ts'
+import type { SessionPluginManager } from './session-plugin-manager.ts'
 import type {
   PluginPanelBrowseEntry,
   PluginPanelBrowseRequest,
@@ -77,6 +78,12 @@ import type {
   PluginPanelPluginPromoteResult,
   PluginPanelPluginDemoteRequest,
   PluginPanelPluginDemoteResult,
+  PluginPanelPluginMountRequest,
+  PluginPanelPluginMountResult,
+  PluginPanelPluginUnmountRequest,
+  PluginPanelPluginUnmountResult,
+  PluginPanelSessionPluginListRequest,
+  PluginPanelSessionPluginListResult,
   PluginPanelCheckUpdatesRequest,
   PluginPanelCheckUpdatesResult,
   PluginPanelPluginUpdateRequest,
@@ -94,6 +101,8 @@ export interface PluginPanelServiceOptions {
   readonly mcp: SessionMcpManager
   /** 插件管理器（宿主组合层；MCP 折叠并入）。 */
   readonly plugins: PluginManager
+  /** 会话级插件挂载管理器（统一挂载点模型的会话维度）。 */
+  readonly sessionPlugins: SessionPluginManager
 }
 
 /** 面板 host 服务：只读为主；写操作与命令/工具同路径。 */
@@ -108,6 +117,7 @@ export class PluginPanelService {
   private readonly store: SessionSkillStore
   private readonly mcp: SessionMcpManager
   private readonly plugins: PluginManager
+  private readonly sessionPlugins: SessionPluginManager
 
   constructor(ctx: Context, options: PluginPanelServiceOptions) {
     this.ctx = ctx
@@ -115,6 +125,7 @@ export class PluginPanelService {
     this.store = options.store
     this.mcp = options.mcp
     this.plugins = options.plugins
+    this.sessionPlugins = options.sessionPlugins
 
     ctx.effect(() => ctx.webServer.register({
       kind: 'prefix',
@@ -217,6 +228,15 @@ export class PluginPanelService {
           break
         case 'pluginDemote':
           result = this.pluginDemote(payload as unknown as PluginPanelPluginDemoteRequest)
+          break
+        case 'pluginMount':
+          result = await this.pluginMount(payload as unknown as PluginPanelPluginMountRequest)
+          break
+        case 'pluginUnmount':
+          result = await this.pluginUnmount(payload as unknown as PluginPanelPluginUnmountRequest)
+          break
+        case 'sessionPluginList':
+          result = this.sessionPluginList(payload as unknown as PluginPanelSessionPluginListRequest)
           break
         case 'checkUpdates':
           result = await this.checkUpdates(payload as unknown as PluginPanelCheckUpdatesRequest)
@@ -435,6 +455,9 @@ export class PluginPanelService {
   /** 插件盘点（宿主组合层；MCP 折叠并入，标注会话连接状态）。 */
   pluginList(request: PluginPanelPluginListRequest): PluginPanelPluginListResult {
     const agent = this.agentOf(request.sessionId)
+    // 会话挂载点：标注到对应行（同一插件多挂载点聚合在一行，M1 视图归并）。
+    const sessionMounted = new Set(this.sessionPlugins.list(agent).map(m => m.id))
+    const mountedByPlugin = this.sessionPlugins.mountsByPlugin()
     return { plugins: this.plugins.list(agent).map(p => ({
       id: p.id,
       source: p.source,
@@ -446,6 +469,8 @@ export class PluginPanelService {
       ...(p.pendingRestart === undefined ? {} : { pendingRestart: p.pendingRestart }),
       ...(p.packageName === undefined ? {} : { packageName: p.packageName }),
       ...(p.mcp === undefined ? {} : { mcp: p.mcp }),
+      ...(sessionMounted.has(p.id) ? { sessionMounted: true } : {}),
+      ...(mountedByPlugin.has(p.id) ? { mountedSessions: mountedByPlugin.get(p.id) as string[] } : {}),
     })) }
   }
 
@@ -481,6 +506,28 @@ export class PluginPanelService {
     const result = this.plugins.demoteToBundle(request.id)
     if (!result.ok) return { ok: false, reason: result.reason }
     return { ok: true, id: result.id, restartRequired: result.restartRequired }
+  }
+
+  /** 把一个插件挂到该会话（会话挂载点；幂等，已挂载返回现状）。 */
+  async pluginMount(request: PluginPanelPluginMountRequest): Promise<PluginPanelPluginMountResult> {
+    const agent = this.agentOf(request.sessionId)
+    const result = await this.sessionPlugins.mount(agent, request.id)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true, id: result.id, mounted: true, alreadyMounted: result.alreadyMounted }
+  }
+
+  /** 从会话移除挂载点。 */
+  async pluginUnmount(request: PluginPanelPluginUnmountRequest): Promise<PluginPanelPluginUnmountResult> {
+    const agent = this.agentOf(request.sessionId)
+    const result = await this.sessionPlugins.unmount(agent, request.id)
+    if (!result.ok) return { ok: false, reason: result.reason }
+    return { ok: true, id: result.id, mounted: false }
+  }
+
+  /** 按会话列出会话挂载点。 */
+  sessionPluginList(request: PluginPanelSessionPluginListRequest): PluginPanelSessionPluginListResult {
+    const agent = this.agentOf(request.sessionId)
+    return { mounts: this.sessionPlugins.list(agent) }
   }
 
   /** 检查更新（自身 + 受管用户插件）：跑 pnpm outdated 并合成视图。自动/手动检查共用。 */

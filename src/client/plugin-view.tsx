@@ -154,6 +154,24 @@ export function PluginPanelPluginView(props: PluginPanelPluginViewProps) {
     )
   }
 
+  /** 把插件挂到本会话（会话挂载点）。 */
+  const runMount = (entry: PluginPanelPluginEntry): void => {
+    runAction(
+      () => client!.pluginMount({ sessionId, id: entry.id }),
+      (r) => `${r.alreadyMounted ? t('plugin.mounted.session') : t('plugin.notice.mounted')}: ${r.id}`,
+      { failText: t('plugin.mount.failed') },
+    )
+  }
+
+  /** 从本会话移除挂载点。 */
+  const runUnmount = (entry: PluginPanelPluginEntry): void => {
+    runAction(
+      () => client!.pluginUnmount({ sessionId, id: entry.id }),
+      (r) => `${t('plugin.notice.unmounted')}: ${r.id}`,
+      { failText: t('plugin.mount.failed') },
+    )
+  }
+
   const runInstall = (): void => {
     if (installId.trim() === '' || installName.trim() === '') return
     runAction(
@@ -337,6 +355,9 @@ export function PluginPanelPluginView(props: PluginPanelPluginViewProps) {
                 {p.active
                   ? <button className="dshp-btn dshp-btn-danger" onClick={() => runToggle(p, false)} disabled={busy}>{t('plugin.action.disable')}</button>
                   : <button className="dshp-btn dshp-btn-primary" onClick={() => runToggle(p, true)} disabled={busy}>{t('plugin.action.enable')}</button>}
+                {p.source !== 'mcp' && (p.sessionMounted
+                  ? <button className="dshp-btn dshp-btn-danger" title={sessionId} onClick={() => runUnmount(p)} disabled={busy}>{t('plugin.action.unmount')}</button>
+                  : <button className="dshp-btn" title={sessionId} onClick={() => runMount(p)} disabled={busy}>{t('plugin.action.mount')}</button>)}
                 {p.source !== 'mcp' && (() => {
                   const up = (updates ?? []).find(u => u.packageName === p.packageName && u.updatable)
                   if (up === undefined) return null
@@ -387,6 +408,11 @@ export function PluginPanelPluginView(props: PluginPanelPluginViewProps) {
                 )
               })()}
             </>
+          )}
+          {p.mountedSessions !== undefined && p.mountedSessions.length > 0 && (
+            <span className="dshp-tag dshp-tag-intro" title={t('plugin.mount.hint')}>
+              {fmt(t('plugin.mount.sessions'), { sessions: p.mountedSessions.join(', ') })}
+            </span>
           )}
           {p.protected && <span className="dshp-tag dshp-tag-eco">{t('plugin.badge.protected')}</span>}
         </div>
